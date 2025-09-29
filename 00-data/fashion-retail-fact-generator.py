@@ -136,10 +136,27 @@ class FactGenerator:
                 customer = random.choice(self.customer_keys)
                 
                 # Customer segment affects purchase behavior
-                if customer['segment'] == 'regular':
-                    items_in_basket = random.choice([1, 2, 3, 4, 5])
-                else:  # new customer
-                    items_in_basket = random.choice([1, 2, 3])
+                segment = customer['segment']
+                if segment == 'vip':
+                    items_in_basket = random.choice([3, 4, 5, 6, 7, 8])  # VIP customers buy more
+                    discount_probability = 0.15  # Low discount rate for VIP
+                    return_probability = 0.05  # Lower return rate
+                elif segment == 'premium':
+                    items_in_basket = random.choice([2, 3, 4, 5, 6])  # Premium customers buy multiple items
+                    discount_probability = 0.25
+                    return_probability = 0.08
+                elif segment == 'loyal':
+                    items_in_basket = random.choice([2, 3, 4, 5])  # Loyal customers consistent purchases
+                    discount_probability = 0.30  # Moderate discounts for loyalty
+                    return_probability = 0.10
+                elif segment == 'regular':
+                    items_in_basket = random.choice([1, 2, 3, 4])  # Regular purchasing pattern
+                    discount_probability = 0.35
+                    return_probability = 0.12
+                else:  # new customers
+                    items_in_basket = random.choice([1, 2, 3])  # New customers start small
+                    discount_probability = 0.40  # Higher discounts to attract new customers
+                    return_probability = 0.15  # Higher return rate due to uncertainty
                 
                 # Select channel based on customer preference
                 if random.random() < 0.7:  # 70% chance of preferred channel
@@ -166,14 +183,27 @@ class FactGenerator:
                     # Calculate pricing
                     base_price = float(product['base_price'])
                     
-                    # Apply discounts
+                    # Apply discounts (influenced by customer segment)
                     is_promotional = date_info['is_sale_period'] and random.random() < 0.3
                     is_clearance = product['season_code'] != date_info['season'] and random.random() < 0.2
-                    
+                    has_segment_discount = random.random() < discount_probability
+
                     if is_clearance:
                         discount_pct = random.uniform(0.3, 0.5)
                     elif is_promotional:
                         discount_pct = random.uniform(0.1, 0.3)
+                    elif has_segment_discount:
+                        # Segment-based discount amount varies by segment
+                        if segment == 'vip':
+                            discount_pct = random.uniform(0.05, 0.15)  # Smaller discounts for VIP
+                        elif segment == 'premium':
+                            discount_pct = random.uniform(0.08, 0.18)
+                        elif segment == 'loyal':
+                            discount_pct = random.uniform(0.10, 0.20)
+                        elif segment == 'regular':
+                            discount_pct = random.uniform(0.12, 0.25)
+                        else:  # new customers
+                            discount_pct = random.uniform(0.15, 0.30)  # Larger discounts for new customers
                     else:
                         discount_pct = 0.0
                     
@@ -186,8 +216,10 @@ class FactGenerator:
                     tax_amount = float(int(net_sales * 0.08 * 100)) / 100  # 8% tax
                     gross_margin = float(int(net_sales * random.uniform(0.4, 0.6) * 100)) / 100
                     
-                    # Return probability
-                    is_return = random.random() < (0.25 if channel['is_digital'] else 0.15)
+                    # Return probability (influenced by customer segment and channel)
+                    base_return_rate = return_probability
+                    channel_multiplier = 1.2 if channel['is_digital'] else 0.8  # Digital has higher returns
+                    is_return = random.random() < (base_return_rate * channel_multiplier)
                     
                     sales_record = {
                         'transaction_id': f"TXN_{str(transaction_id).zfill(10)}",

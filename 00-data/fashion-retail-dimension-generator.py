@@ -33,32 +33,128 @@ class DimensionGenerator:
         num_customers = configured_customers if configured_customers <= 10000 else 10000
         logger.info(f"Generating {num_customers} customers (from config: {configured_customers})...")
 
-        # Generate simple customer data
+        # Define customer segments with realistic distributions and characteristics
+        customer_segments = {
+            'vip': {
+                'probability': 0.05,  # 5% of customers
+                'lifetime_value_range': (5000, 25000),
+                'acquisition_channels': ['store', 'referral', 'social'],
+                'preferred_channels': ['store', 'web'],
+                'preferred_categories': ['outerwear', 'dresses', 'accessories'],
+                'loyalty_tiers': ['platinum', 'gold'],
+                'geo_regions': ['Northeast', 'West'],
+                'email_subscribe_rate': 0.95,
+                'sms_subscribe_rate': 0.80
+            },
+            'premium': {
+                'probability': 0.15,  # 15% of customers
+                'lifetime_value_range': (2000, 8000),
+                'acquisition_channels': ['web', 'store', 'social'],
+                'preferred_channels': ['web', 'app'],
+                'preferred_categories': ['dresses', 'outerwear', 'tops'],
+                'loyalty_tiers': ['gold', 'silver'],
+                'geo_regions': ['Northeast', 'West', 'Southeast'],
+                'email_subscribe_rate': 0.85,
+                'sms_subscribe_rate': 0.60
+            },
+            'loyal': {
+                'probability': 0.25,  # 25% of customers
+                'lifetime_value_range': (800, 3000),
+                'acquisition_channels': ['web', 'store', 'email'],
+                'preferred_channels': ['web', 'store'],
+                'preferred_categories': ['tops', 'bottoms', 'dresses'],
+                'loyalty_tiers': ['silver', 'bronze'],
+                'geo_regions': ['Northeast', 'West', 'Southeast', 'Midwest'],
+                'email_subscribe_rate': 0.70,
+                'sms_subscribe_rate': 0.40
+            },
+            'regular': {
+                'probability': 0.35,  # 35% of customers
+                'lifetime_value_range': (200, 1200),
+                'acquisition_channels': ['web', 'social', 'search'],
+                'preferred_channels': ['web', 'app'],
+                'preferred_categories': ['tops', 'bottoms', 'accessories'],
+                'loyalty_tiers': ['bronze', 'silver'],
+                'geo_regions': ['West', 'Southeast', 'Midwest', 'Southwest'],
+                'email_subscribe_rate': 0.50,
+                'sms_subscribe_rate': 0.25
+            },
+            'new': {
+                'probability': 0.20,  # 20% of customers
+                'lifetime_value_range': (50, 500),
+                'acquisition_channels': ['web', 'social', 'search', 'paid'],
+                'preferred_channels': ['web', 'app', 'social'],
+                'preferred_categories': ['tops', 'bottoms', 'accessories'],
+                'loyalty_tiers': ['bronze'],
+                'geo_regions': ['West', 'Southeast', 'Midwest', 'Southwest', 'Northeast'],
+                'email_subscribe_rate': 0.30,
+                'sms_subscribe_rate': 0.15
+            }
+        }
+
+        # Geographic regions with cities
+        geo_data = {
+            'Northeast': ['New York', 'Boston', 'Philadelphia', 'Washington DC'],
+            'West': ['Seattle', 'Los Angeles', 'San Francisco', 'Portland'],
+            'Southeast': ['Miami', 'Atlanta', 'Charlotte', 'Tampa'],
+            'Midwest': ['Chicago', 'Detroit', 'Cleveland', 'Milwaukee'],
+            'Southwest': ['Dallas', 'Houston', 'Phoenix', 'Austin']
+        }
+
+
+        # Size profiles
+        size_profiles = {
+            'tops': ['XS', 'S', 'M', 'L', 'XL', 'XXL'],
+            'bottoms': ['26', '28', '30', '32', '34', '36', '38', '40']
+        }
+
+        # Generate customer data with realistic distributions
         customers_data = []
+        segment_assignments = []
+
+        # Pre-calculate segment assignments based on probabilities
+        for segment, config in customer_segments.items():
+            count = int(num_customers * config['probability'])
+            segment_assignments.extend([segment] * count)
+
+        # Fill remaining slots with 'regular' if needed
+        while len(segment_assignments) < num_customers:
+            segment_assignments.append('regular')
+
+        # Shuffle to randomize order
+        random.shuffle(segment_assignments)
 
         try:
             for i in range(num_customers):
-                # Create very simple customer record
+                # Get assigned segment
+                segment = segment_assignments[i]
+                segment_config = customer_segments[segment]
+
+                # Generate customer based on segment characteristics
+                acquisition_date = datetime(2023, 1, 1) - timedelta(days=random.randint(0, 730))
+                geo_region = random.choice(segment_config['geo_regions'])
+                geo_city = random.choice(geo_data[geo_region])
+
                 customer = {
-                    'customer_key': i + 1,  # Add customer_key for fact tables
+                    'customer_key': i + 1,
                     'customer_id': f"CUST_{i+1:08d}",
                     'email': f"customer_{i+1}@test.com",
                     'first_name': f"First{i+1}",
                     'last_name': f"Last{i+1}",
-                    'segment': 'regular',
-                    'lifetime_value': 100.0 + i * 10.0,
-                    'acquisition_date': datetime(2023, 1, 1).date(),
-                    'acquisition_channel': 'web',
-                    'preferred_channel': 'web',
-                    'preferred_category': 'tops',
-                    'size_profile_tops': 'M',
-                    'size_profile_bottoms': '32',
-                    'geo_region': 'West',
-                    'geo_city': 'Seattle',
-                    'nearest_store_id': 1,
-                    'loyalty_tier': 'bronze',
-                    'email_subscribe_flag': True,
-                    'sms_subscribe_flag': False,
+                    'segment': segment,
+                    'lifetime_value': float(int(random.uniform(*segment_config['lifetime_value_range']) * 100)) / 100,
+                    'acquisition_date': acquisition_date.date(),
+                    'acquisition_channel': random.choice(segment_config['acquisition_channels']),
+                    'preferred_channel': random.choice(segment_config['preferred_channels']),
+                    'preferred_category': random.choice(segment_config['preferred_categories']),
+                    'size_profile_tops': random.choice(size_profiles['tops']),
+                    'size_profile_bottoms': random.choice(size_profiles['bottoms']),
+                    'geo_region': geo_region,
+                    'geo_city': geo_city,
+                    'nearest_store_id': random.randint(1, 10),
+                    'loyalty_tier': random.choice(segment_config['loyalty_tiers']),
+                    'email_subscribe_flag': random.random() < segment_config['email_subscribe_rate'],
+                    'sms_subscribe_flag': random.random() < segment_config['sms_subscribe_rate'],
                     'effective_date': datetime(2023, 1, 1).date(),
                     'expiration_date': datetime(9999, 12, 31).date(),
                     'is_current': True,
