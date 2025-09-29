@@ -66,11 +66,11 @@ config = {
     'force_recreate': True,
     
     # Scale parameters - small for testing (increase once pipeline works)
-    'customers': 10,        # Start with 100 customers
-    'products': 5,          # Start with 50 products
-    'locations': 13,         # Keep 13 locations (small already)
-    'historical_days': 30,   # Just 30 days of history
-    'events_per_day': 10, # 1K events per day
+    'customers': 50_000,        # Start with 100 customers
+    'products': 2_000,          # Start with 50 products
+    'locations': 25,         # Keep 13 locations (small already)
+    'historical_days': 90,   # Just 30 days of history
+    'events_per_day': 100, # 1K events per day
     
     # Features
     'enable_cdc': True,
