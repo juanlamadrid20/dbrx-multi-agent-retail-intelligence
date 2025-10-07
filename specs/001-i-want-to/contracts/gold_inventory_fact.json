@@ -1,0 +1,196 @@
+{
+  "table_name": "gold_inventory_fact",
+  "catalog": "juan_dev",
+  "schema": "retail",
+  "description": "Daily inventory snapshot fact table with stockout tracking",
+  "table_type": "FACT",
+  "grain": "Product × Location × Date",
+  "fields": [
+    {
+      "name": "product_key",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Foreign key to product dimension"
+    },
+    {
+      "name": "location_key",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Foreign key to location dimension"
+    },
+    {
+      "name": "date_key",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Date in YYYYMMDD format"
+    },
+    {
+      "name": "quantity_on_hand",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Total physical inventory",
+      "validation": "quantity_on_hand >= 0"
+    },
+    {
+      "name": "quantity_available",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Available for sale (after deductions from sales)",
+      "validation": "quantity_available >= 0",
+      "changed": true
+    },
+    {
+      "name": "quantity_reserved",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Reserved for orders"
+    },
+    {
+      "name": "quantity_in_transit",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "In transit to location"
+    },
+    {
+      "name": "quantity_damaged",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Damaged/unsellable inventory"
+    },
+    {
+      "name": "is_stockout",
+      "type": "BOOLEAN",
+      "nullable": false,
+      "description": "True when quantity_available = 0",
+      "validation": "is_stockout = (quantity_available = 0)",
+      "new": true
+    },
+    {
+      "name": "stockout_duration_days",
+      "type": "INTEGER",
+      "nullable": true,
+      "description": "Consecutive days at zero inventory (NULL if not stockout)",
+      "new": true
+    },
+    {
+      "name": "last_replenishment_date",
+      "type": "DATE",
+      "nullable": true,
+      "description": "Most recent inventory receipt date",
+      "new": true
+    },
+    {
+      "name": "next_replenishment_date",
+      "type": "DATE",
+      "nullable": true,
+      "description": "Scheduled next receipt (fixed schedule)",
+      "new": true
+    },
+    {
+      "name": "inventory_value_cost",
+      "type": "DOUBLE",
+      "nullable": false,
+      "description": "Inventory valued at cost"
+    },
+    {
+      "name": "inventory_value_retail",
+      "type": "DOUBLE",
+      "nullable": false,
+      "description": "Inventory valued at retail price"
+    },
+    {
+      "name": "days_of_supply",
+      "type": "INTEGER",
+      "nullable": true,
+      "description": "Projected days until stockout"
+    },
+    {
+      "name": "stock_cover_days",
+      "type": "INTEGER",
+      "nullable": true,
+      "description": "Days of inventory coverage"
+    },
+    {
+      "name": "reorder_point",
+      "type": "INTEGER",
+      "nullable": true,
+      "description": "Reorder threshold quantity"
+    },
+    {
+      "name": "reorder_quantity",
+      "type": "INTEGER",
+      "nullable": true,
+      "description": "Standard reorder quantity"
+    },
+    {
+      "name": "is_overstock",
+      "type": "BOOLEAN",
+      "nullable": false,
+      "description": "True when inventory exceeds normal levels"
+    },
+    {
+      "name": "is_discontinued",
+      "type": "BOOLEAN",
+      "nullable": false,
+      "description": "True if product is discontinued"
+    },
+    {
+      "name": "source_system",
+      "type": "STRING",
+      "nullable": false,
+      "description": "Source system identifier"
+    },
+    {
+      "name": "etl_timestamp",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "description": "ETL processing timestamp"
+    }
+  ],
+  "primary_key": ["product_key", "location_key", "date_key"],
+  "foreign_keys": [
+    {
+      "columns": ["product_key"],
+      "references": "gold_product_dim(product_key)"
+    },
+    {
+      "columns": ["location_key"],
+      "references": "gold_location_dim(location_key)"
+    },
+    {
+      "columns": ["date_key"],
+      "references": "gold_date_dim(date_key)"
+    }
+  ],
+  "quality_checks": [
+    {
+      "name": "no_negative_inventory",
+      "query": "SELECT COUNT(*) FROM gold_inventory_fact WHERE quantity_available < 0",
+      "expected": 0
+    },
+    {
+      "name": "stockout_rate_in_range",
+      "query": "SELECT (SUM(CASE WHEN is_stockout THEN 1 ELSE 0 END) * 100.0 / COUNT(*)) AS rate FROM gold_inventory_fact",
+      "expected_range": [5.0, 10.0]
+    },
+    {
+      "name": "quantity_reconciliation",
+      "query": "SELECT COUNT(*) FROM gold_inventory_fact WHERE quantity_on_hand <> (quantity_available + quantity_reserved + quantity_damaged)",
+      "expected": 0
+    }
+  ],
+  "version": "2.0",
+  "last_updated": "2025-10-06",
+  "changelog": [
+    {
+      "version": "2.0",
+      "date": "2025-10-06",
+      "changes": [
+        "Added is_stockout column for stockout detection",
+        "Added stockout_duration_days for tracking stockout periods",
+        "Added last_replenishment_date and next_replenishment_date",
+        "Updated quantity_available to reflect real-time sales deductions"
+      ]
+    }
+  ]
+}

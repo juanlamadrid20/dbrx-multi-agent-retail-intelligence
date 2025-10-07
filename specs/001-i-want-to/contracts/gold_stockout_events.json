@@ -1,0 +1,142 @@
+{
+  "table_name": "gold_stockout_events",
+  "catalog": "juan_dev",
+  "schema": "retail",
+  "description": "Stockout event tracking fact table (NEW)",
+  "table_type": "FACT",
+  "grain": "Stockout Event",
+  "is_new_table": true,
+  "fields": [
+    {
+      "name": "stockout_id",
+      "type": "BIGINT",
+      "nullable": false,
+      "description": "Auto-increment primary key"
+    },
+    {
+      "name": "product_key",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Foreign key to product dimension"
+    },
+    {
+      "name": "location_key",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Foreign key to location dimension"
+    },
+    {
+      "name": "stockout_start_date_key",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "First date with zero inventory (YYYYMMDD)"
+    },
+    {
+      "name": "stockout_end_date_key",
+      "type": "INTEGER",
+      "nullable": true,
+      "description": "Last date with zero inventory (NULL if ongoing)"
+    },
+    {
+      "name": "stockout_duration_days",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Number of consecutive stockout days",
+      "validation": "stockout_duration_days >= 1"
+    },
+    {
+      "name": "lost_sales_attempts",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Number of purchase attempts during stockout",
+      "validation": "lost_sales_attempts >= 0"
+    },
+    {
+      "name": "lost_sales_quantity",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Total quantity requested but unavailable",
+      "validation": "lost_sales_quantity >= lost_sales_attempts"
+    },
+    {
+      "name": "lost_sales_revenue",
+      "type": "DOUBLE",
+      "nullable": false,
+      "description": "Estimated revenue lost during stockout"
+    },
+    {
+      "name": "peak_season_flag",
+      "type": "BOOLEAN",
+      "nullable": false,
+      "description": "True if stockout occurred during peak season (Nov-Dec)"
+    },
+    {
+      "name": "source_system",
+      "type": "STRING",
+      "nullable": false,
+      "description": "Source system identifier"
+    },
+    {
+      "name": "etl_timestamp",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "description": "ETL processing timestamp"
+    }
+  ],
+  "primary_key": ["stockout_id"],
+  "foreign_keys": [
+    {
+      "columns": ["product_key"],
+      "references": "gold_product_dim(product_key)"
+    },
+    {
+      "columns": ["location_key"],
+      "references": "gold_location_dim(location_key)"
+    },
+    {
+      "columns": ["stockout_start_date_key"],
+      "references": "gold_date_dim(date_key)"
+    },
+    {
+      "columns": ["stockout_end_date_key"],
+      "references": "gold_date_dim(date_key)"
+    }
+  ],
+  "quality_checks": [
+    {
+      "name": "valid_date_range",
+      "query": "SELECT COUNT(*) FROM gold_stockout_events WHERE stockout_end_date_key IS NOT NULL AND stockout_end_date_key < stockout_start_date_key",
+      "expected": 0
+    },
+    {
+      "name": "duration_consistency",
+      "query": "SELECT COUNT(*) FROM gold_stockout_events WHERE stockout_end_date_key IS NOT NULL AND stockout_duration_days <> (stockout_end_date_key - stockout_start_date_key + 1)",
+      "expected": 0
+    },
+    {
+      "name": "lost_sales_logic",
+      "query": "SELECT COUNT(*) FROM gold_stockout_events WHERE lost_sales_quantity < lost_sales_attempts",
+      "expected": 0
+    }
+  ],
+  "indexes": [
+    {
+      "columns": ["product_key", "location_key", "stockout_start_date_key"],
+      "type": "BTREE",
+      "description": "Lookup stockouts by product-location-date"
+    }
+  ],
+  "version": "1.0",
+  "last_updated": "2025-10-06",
+  "changelog": [
+    {
+      "version": "1.0",
+      "date": "2025-10-06",
+      "changes": [
+        "Initial table creation for stockout event tracking",
+        "Supports 5-10% stockout rate requirement",
+        "Tracks lost sales opportunities during stockout periods"
+      ]
+    }
+  ]
+}
