@@ -105,9 +105,40 @@ class FashionRetailDataGenerator:
     def create_facts(self):
         """Create fact tables"""
         logger.info("Creating fact tables...")
-        
+
+        # INVENTORY ALIGNMENT - Feature: 001-i-want-to
+        # Initialize InventoryManager and SalesValidator
+        logger.info("Initializing inventory alignment components...")
+
         # Get current directory for module loading
         current_dir = os.getcwd()
+
+        # Load inventory management modules
+        inventory_spec = importlib.util.spec_from_file_location("inventory_manager",
+                                                               os.path.join(current_dir, "inventory_manager.py"))
+        inventory_module = importlib.util.module_from_spec(inventory_spec)
+        inventory_spec.loader.exec_module(inventory_module)
+        InventoryManager = inventory_module.InventoryManager
+
+        sales_validator_spec = importlib.util.spec_from_file_location("sales_validator",
+                                                                      os.path.join(current_dir, "sales_validator.py"))
+        sales_validator_module = importlib.util.module_from_spec(sales_validator_spec)
+        sales_validator_spec.loader.exec_module(sales_validator_module)
+        SalesValidator = sales_validator_module.SalesValidator
+
+        # Initialize components
+        inventory_manager = InventoryManager(self.spark, self.config)
+        sales_validator = SalesValidator(inventory_manager, self.config)
+
+        # Initialize inventory positions for all product-location combinations
+        # Need to load dimensions first
+        products_df = self.spark.table(f"{self.catalog}.{self.schema}.gold_product_dim")
+        locations_df = self.spark.table(f"{self.catalog}.{self.schema}.gold_location_dim")
+
+        inventory_manager.initialize_inventory(products_df, locations_df)
+        inventory_manager.log_statistics()
+
+        logger.info("Inventory alignment components initialized successfully")
 
         # Load fact generator module
         spec = importlib.util.spec_from_file_location("fashion_retail_fact_generator",
@@ -115,15 +146,29 @@ class FashionRetailDataGenerator:
         fact_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(fact_module)
         FactGenerator = fact_module.FactGenerator
-        fact_gen = FactGenerator(self.spark, self.config)
-        
-        # Create fact tables
-        fact_gen.create_sales_fact()
-        fact_gen.create_inventory_fact()
+
+        # Pass inventory components to FactGenerator
+        fact_gen = FactGenerator(self.spark, self.config,
+                                inventory_manager=inventory_manager,
+                                sales_validator=sales_validator)
+
+        # Create fact tables IN ORDER (sales must come before inventory snapshots)
+        fact_gen.create_sales_fact()  # Uses SalesValidator
+        fact_gen.create_inventory_fact()  # Uses InventoryManager
         fact_gen.create_customer_event_fact()
-        fact_gen.create_cart_abandonment_fact()
+        fact_gen.create_cart_abandonment_fact()  # Uses SalesValidator for low inventory checks
         fact_gen.create_demand_forecast_fact()
-        
+
+        # NEW: Create stockout events table - Feature: 001-i-want-to
+        fact_gen.create_stockout_events()  # Uses InventoryManager history
+
+        # Log final statistics
+        logger.info("=" * 60)
+        logger.info("FINAL INVENTORY ALIGNMENT STATISTICS")
+        inventory_manager.log_statistics()
+        sales_validator.log_statistics()
+        logger.info("=" * 60)
+
         logger.info("Fact tables created successfully")
     
     def create_bridge_aggregates(self):
@@ -384,24 +429,31 @@ def main():
         'catalog': 'juan_dev',
         'schema': 'retail',
         'force_recreate': True,
-        
+
         # Scale parameters
         'customers': 100_000,
         'products': 10_000,
         'locations': 13,
         'historical_days': 730,
         'events_per_day': 500_000,
-        
+
         # Features
         'enable_cdc': True,
         'enable_liquid_clustering': True,
-        
+
         # Optimization
         'z_order_keys': {
             'gold_sales_fact': ['date_key', 'product_key'],
             'gold_inventory_fact': ['product_key', 'location_key'],
             'gold_customer_event_fact': ['date_key', 'customer_key']
-        }
+        },
+
+        # NEW: Inventory alignment parameters (Feature: 001-i-want-to)
+        'random_seed': 42,  # For reproducible data generation
+        'target_stockout_rate': 0.075,  # Target 7.5% stockout rate (midpoint of 5-10%)
+        'cart_abandonment_increase': 0.10,  # +10 percentage points for low inventory
+        'return_delay_days': (1, 3),  # Returns replenish inventory 1-3 days later
+        'low_inventory_threshold': 5,  # Trigger cart abandonment increase when qty < 5
     }
     
     # Run generator

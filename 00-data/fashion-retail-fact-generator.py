@@ -6,27 +6,36 @@ Creates and populates all fact tables with realistic transactional data
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
-from datetime import datetime, timedelta
+from datetime import datetime as dt, timedelta
 import random
 import math
 import logging
+
+# Import new inventory-aligned components
+from inventory_manager import InventoryManager
+from sales_validator import SalesValidator, PurchaseRequest, BatchPurchaseBuilder
+from stockout_generator import StockoutGenerator
 
 logger = logging.getLogger(__name__)
 
 class FactGenerator:
     """Generate fact tables for fashion retail star schema"""
-    
-    def __init__(self, spark: SparkSession, config: dict):
+
+    def __init__(self, spark: SparkSession, config: dict, inventory_manager=None, sales_validator=None):
         self.spark = spark
         self.config = config
         self.catalog = config['catalog']
         self.schema = config['schema']
-        
+
+        # Inventory alignment components (passed from orchestrator)
+        self.inventory_manager = inventory_manager
+        self.sales_validator = sales_validator
+
         # Load dimension data for foreign keys
         self._load_dimensions()
-        
+
         # Set seed for reproducibility
-        random.seed(42)
+        random.seed(config.get('random_seed', 42))
     
     def _load_dimensions(self):
         """Load dimension data for generating foreign keys"""
@@ -209,18 +218,61 @@ class FactGenerator:
                     
                     unit_price = base_price
                     discount_amount = float(int(base_price * discount_pct * 100)) / 100
-                    quantity = random.choice([1, 2, 3])
-                    
-                    # Calculate amounts
-                    net_sales = float(int((unit_price - discount_amount) * quantity * 100)) / 100
+                    requested_quantity = random.choice([1, 2, 3])
+
+                    # INVENTORY VALIDATION - Feature: 001-i-want-to
+                    # Validate purchase against available inventory
+                    if self.sales_validator:
+                        allocation_result = self.sales_validator.validate_purchase(
+                            product_key=product['product_key'],
+                            location_key=location['location_key'],
+                            date_key=date_info['date_key'],
+                            requested_qty=requested_quantity,
+                            customer_key=customer['customer_key']
+                        )
+
+                        # Skip this sale if no inventory available (stockout)
+                        if not allocation_result.allocation_success:
+                            continue
+
+                        quantity_sold = allocation_result.allocated_quantity
+                        quantity_requested = allocation_result.requested_quantity
+                        is_inventory_constrained = allocation_result.is_inventory_constrained
+                        inventory_at_purchase = allocation_result.inventory_at_purchase
+                    else:
+                        # Fallback to old behavior if no validator (for backward compatibility)
+                        quantity_sold = requested_quantity
+                        quantity_requested = requested_quantity
+                        is_inventory_constrained = False
+                        inventory_at_purchase = None
+
+                    # Calculate amounts based on ALLOCATED quantity
+                    net_sales = float(int((unit_price - discount_amount) * quantity_sold * 100)) / 100
                     tax_amount = float(int(net_sales * 0.08 * 100)) / 100  # 8% tax
                     gross_margin = float(int(net_sales * random.uniform(0.4, 0.6) * 100)) / 100
-                    
+
                     # Return probability (influenced by customer segment and channel)
                     base_return_rate = return_probability
                     channel_multiplier = 1.2 if channel['is_digital'] else 0.8  # Digital has higher returns
                     is_return = random.random() < (base_return_rate * channel_multiplier)
-                    
+
+                    # Calculate return restocking date (1-3 days after return)
+                    return_restocked_date_key = None
+                    if is_return and self.inventory_manager:
+                        delay_days = random.randint(*self.config.get('return_delay_days', (1, 3)))
+                        return_date = dt.strptime(str(date_info['date_key']), '%Y%m%d')
+                        restock_date = return_date + timedelta(days=delay_days)
+                        return_restocked_date_key = int(restock_date.strftime('%Y%m%d'))
+
+                        # Schedule replenishment in inventory manager
+                        self.inventory_manager.schedule_replenishment(
+                            product_key=product['product_key'],
+                            location_key=location['location_key'],
+                            return_date_key=date_info['date_key'],
+                            quantity=quantity_sold,
+                            delay_days=delay_days
+                        )
+
                     sales_record = {
                         'transaction_id': f"TXN_{str(transaction_id).zfill(10)}",
                         'line_item_id': f"LINE_{str(line_item_id).zfill(12)}",
@@ -233,7 +285,7 @@ class FactGenerator:
                         'order_number': order_number,
                         'pos_terminal_id': f"POS_{location['location_key']}" if not channel['is_digital'] else None,
                         'sales_associate_id': f"SA_{random.randint(1, 100)}" if not channel['is_digital'] else None,
-                        'quantity_sold': quantity,
+                        'quantity_sold': quantity_sold,  # ALLOCATED quantity
                         'unit_price': unit_price,
                         'discount_amount': discount_amount,
                         'tax_amount': tax_amount,
@@ -243,11 +295,17 @@ class FactGenerator:
                         'is_exchange': is_return and random.random() < 0.3,
                         'is_promotional': is_promotional,
                         'is_clearance': is_clearance,
-                        'fulfillment_type': random.choice(['ship', 'pickup', 'same_day']) if channel['is_digital'] 
+                        'fulfillment_type': random.choice(['ship', 'pickup', 'same_day']) if channel['is_digital']
                                            else 'in_store',
                         'payment_method': random.choice(['credit_card', 'debit_card', 'paypal', 'apple_pay']),
+                        # NEW COLUMNS - Feature: 001-i-want-to
+                        'quantity_requested': quantity_requested,
+                        'is_inventory_constrained': is_inventory_constrained,
+                        'inventory_at_purchase': inventory_at_purchase,
+                        'return_restocked_date_key': return_restocked_date_key,
+                        # Standard columns
                         'source_system': 'OMS_POS_ECOMM',
-                        'etl_timestamp': datetime.now()
+                        'etl_timestamp': dt.now()
                     }
                     sales_data.append(sales_record)
                     line_item_id += 1
@@ -276,73 +334,159 @@ class FactGenerator:
     def create_inventory_fact(self):
         """Create and populate inventory fact table (daily snapshots)"""
         logger.info("Generating inventory fact table...")
-        
+
         inventory_data = []
-        
-        # For each date, create inventory snapshot for all product-location combinations
-        for date_info in self.date_keys[-30:]:  # Last 30 days for demo (full would be huge)
-            for product in self.product_keys[:1000]:  # Limit products for demo
-                for location in self.location_keys:
-                    # Base inventory levels vary by location type
-                    if location['location_type'] == 'dc':
-                        base_qty = random.randint(500, 2000)
-                    elif location['location_type'] == 'warehouse':
-                        base_qty = random.randint(200, 800)
-                    else:  # store
-                        base_qty = random.randint(10, 100)
-                    
-                    # Apply seasonality and randomness
-                    qty_on_hand = int(self._apply_seasonality_multiplier(base_qty, date_info) * 
-                                     random.uniform(0.5, 1.5))
-                    
-                    # Calculate other inventory metrics
-                    qty_reserved = int(qty_on_hand * random.uniform(0, 0.3))
-                    qty_available = qty_on_hand - qty_reserved
-                    qty_in_transit = random.randint(0, 50) if random.random() < 0.2 else 0
-                    qty_damaged = random.randint(0, 5) if random.random() < 0.1 else 0
-                    
+
+        # INVENTORY MANAGER INTEGRATION - Feature: 001-i-want-to
+        if self.inventory_manager:
+            # Use InventoryManager for real-time state tracking
+            logger.info("Using InventoryManager for inventory snapshots...")
+
+            # Generate snapshots for all dates (or subset for testing)
+            snapshot_dates = self.date_keys[-30:] if self.config.get('test_mode') else self.date_keys
+
+            for date_info in snapshot_dates:
+                # Get inventory snapshot from manager
+                snapshot = self.inventory_manager.get_inventory_snapshot(date_info['date_key'])
+
+                # Enrich snapshot with additional metrics
+                for position_data in snapshot:
+                    product = next((p for p in self.product_keys if p['product_key'] == position_data['product_key']), None)
+                    if not product:
+                        continue
+
                     # Financial metrics
                     unit_cost = float(product['base_price']) * 0.4
+                    qty_on_hand = position_data['quantity_on_hand']
                     inventory_value_cost = float(int(qty_on_hand * unit_cost * 100)) / 100
                     inventory_value_retail = float(int(qty_on_hand * float(product['base_price']) * 100)) / 100
-                    
-                    # Inventory health metrics
+
+                    # Inventory health metrics (simplified calculations)
                     days_of_supply = random.randint(5, 90)
                     stock_cover_days = random.randint(7, 60)
                     reorder_point = random.randint(20, 200)
                     reorder_quantity = random.randint(50, 500)
-                    
+
+                    # Additional inventory components
+                    qty_in_transit = random.randint(0, 50) if random.random() < 0.2 else 0
+
                     # Flags
-                    is_stockout = qty_available <= 0
                     is_overstock = days_of_supply > 60
-                    
+
+                    # Calculate last/next replenishment dates (if in stockout)
+                    last_replenishment_date = None
+                    next_replenishment_date = None
+                    if position_data['is_stockout']:
+                        # Would be calculated from replenishment schedule in production
+                        # For synthetic data, use random dates
+                        current_date = dt.strptime(str(date_info['date_key']), '%Y%m%d')
+                        last_replenishment = current_date - timedelta(days=random.randint(7, 30))
+                        next_replenishment = current_date + timedelta(days=random.randint(1, 7))
+                        last_replenishment_date = last_replenishment.date()
+                        next_replenishment_date = next_replenishment.date()
+
                     inventory_record = {
-                        'product_key': product['product_key'],
-                        'location_key': location['location_key'],
-                        'date_key': date_info['date_key'],
-                        'quantity_on_hand': qty_on_hand,
-                        'quantity_available': qty_available,
-                        'quantity_reserved': qty_reserved,
+                        'product_key': position_data['product_key'],
+                        'location_key': position_data['location_key'],
+                        'date_key': position_data['date_key'],
+                        'quantity_on_hand': position_data['quantity_on_hand'],
+                        'quantity_available': position_data['quantity_available'],
+                        'quantity_reserved': position_data['quantity_reserved'],
                         'quantity_in_transit': qty_in_transit,
-                        'quantity_damaged': qty_damaged,
+                        'quantity_damaged': position_data['quantity_damaged'],
                         'inventory_value_cost': inventory_value_cost,
                         'inventory_value_retail': inventory_value_retail,
                         'days_of_supply': days_of_supply,
                         'stock_cover_days': stock_cover_days,
                         'reorder_point': reorder_point,
                         'reorder_quantity': reorder_quantity,
-                        'is_stockout': is_stockout,
+                        'is_stockout': position_data['is_stockout'],
                         'is_overstock': is_overstock,
                         'is_discontinued': False,
+                        # NEW COLUMNS - Feature: 001-i-want-to
+                        'stockout_duration_days': position_data.get('stockout_duration_days', 0),
+                        'last_replenishment_date': last_replenishment_date,
+                        'next_replenishment_date': next_replenishment_date,
+                        # Standard columns
                         'source_system': 'WMS_STORE_INV',
-                        'etl_timestamp': datetime.now()
+                        'etl_timestamp': dt.now()
                     }
                     inventory_data.append(inventory_record)
-                    
-                    # Batch write
-                    if len(inventory_data) >= 100000:
-                        self._write_batch(inventory_data, 'gold_inventory_fact', mode='append' if len(inventory_data) > 100000 else 'overwrite')
-                        inventory_data = []
+
+                # Batch write every 100K records
+                if len(inventory_data) >= 100000:
+                    self._write_batch(inventory_data, 'gold_inventory_fact',
+                                    mode='append' if len(inventory_data) > 100000 else 'overwrite')
+                    inventory_data = []
+
+        else:
+            # FALLBACK: Old behavior if no InventoryManager (backward compatibility)
+            logger.warning("No InventoryManager provided - using legacy inventory generation")
+
+            for date_info in self.date_keys[-30:]:  # Last 30 days for demo
+                for product in self.product_keys[:1000]:  # Limit products for demo
+                    for location in self.location_keys:
+                        # Base inventory levels vary by location type
+                        if location['location_type'] == 'dc':
+                            base_qty = random.randint(500, 2000)
+                        elif location['location_type'] == 'warehouse':
+                            base_qty = random.randint(200, 800)
+                        else:  # store
+                            base_qty = random.randint(10, 100)
+
+                        # Apply seasonality and randomness
+                        qty_on_hand = int(self._apply_seasonality_multiplier(base_qty, date_info) *
+                                         random.uniform(0.5, 1.5))
+
+                        # Calculate other inventory metrics
+                        qty_reserved = int(qty_on_hand * random.uniform(0, 0.3))
+                        qty_available = qty_on_hand - qty_reserved
+                        qty_in_transit = random.randint(0, 50) if random.random() < 0.2 else 0
+                        qty_damaged = random.randint(0, 5) if random.random() < 0.1 else 0
+
+                        # Financial metrics
+                        unit_cost = float(product['base_price']) * 0.4
+                        inventory_value_cost = float(int(qty_on_hand * unit_cost * 100)) / 100
+                        inventory_value_retail = float(int(qty_on_hand * float(product['base_price']) * 100)) / 100
+
+                        # Inventory health metrics
+                        days_of_supply = random.randint(5, 90)
+                        stock_cover_days = random.randint(7, 60)
+                        reorder_point = random.randint(20, 200)
+                        reorder_quantity = random.randint(50, 500)
+
+                        # Flags
+                        is_stockout = qty_available <= 0
+                        is_overstock = days_of_supply > 60
+
+                        inventory_record = {
+                            'product_key': product['product_key'],
+                            'location_key': location['location_key'],
+                            'date_key': date_info['date_key'],
+                            'quantity_on_hand': qty_on_hand,
+                            'quantity_available': qty_available,
+                            'quantity_reserved': qty_reserved,
+                            'quantity_in_transit': qty_in_transit,
+                            'quantity_damaged': qty_damaged,
+                            'inventory_value_cost': inventory_value_cost,
+                            'inventory_value_retail': inventory_value_retail,
+                            'days_of_supply': days_of_supply,
+                            'stock_cover_days': stock_cover_days,
+                            'reorder_point': reorder_point,
+                            'reorder_quantity': reorder_quantity,
+                            'is_stockout': is_stockout,
+                            'is_overstock': is_overstock,
+                            'is_discontinued': False,
+                            'source_system': 'WMS_STORE_INV',
+                            'etl_timestamp': dt.now()
+                        }
+                        inventory_data.append(inventory_record)
+
+                        # Batch write
+                        if len(inventory_data) >= 100000:
+                            self._write_batch(inventory_data, 'gold_inventory_fact',
+                                            mode='append' if len(inventory_data) > 100000 else 'overwrite')
+                            inventory_data = []
         
         # Write remaining records
         if inventory_data:
@@ -415,7 +559,7 @@ class FactGenerator:
                     'referrer_url': random.choice(['google.com', 'facebook.com', 'instagram.com', 'direct', 'email']),
                     'search_term': f"{product['category_level_2']} {product['brand']}" if event_type == 'search' and product else None,
                     'source_system': 'GA4_ADOBE_STORE',
-                    'etl_timestamp': datetime.now()
+                    'etl_timestamp': dt.now()
                 }
                 events_data.append(event_record)
                 event_id += 1
@@ -453,17 +597,57 @@ class FactGenerator:
             for i in range(daily_abandonments):
                 customer = random.choice(self.customer_keys)
                 channel = random.choice([c for c in self.channel_keys if c['is_digital']])
-                
+
                 # Cart value and items
                 items_count = random.choice([1, 2, 3, 4, 5])
                 cart_value = float(int(random.uniform(50, 500) * 100)) / 100
-                
+
+                # LOW INVENTORY INTEGRATION - Feature: 001-i-want-to
+                # Check if any items in cart have low inventory
+                low_inventory_trigger = False
+                inventory_constrained_items = 0
+
+                if self.sales_validator:
+                    # Simulate cart contents by checking random products
+                    for _ in range(items_count):
+                        product = random.choice(self.product_keys)
+                        location = random.choice(self.location_keys)
+
+                        is_low_inv = self.sales_validator.is_low_inventory(
+                            product_key=product['product_key'],
+                            location_key=location['location_key'],
+                            date_key=date_info['date_key']
+                        )
+
+                        if is_low_inv:
+                            low_inventory_trigger = True
+                            inventory_constrained_items += 1
+
+                # Adjust abandonment probability based on inventory
+                # +10pp abandonment rate when low inventory detected
+                base_abandonment_rate = 0.25
+                if low_inventory_trigger:
+                    abandonment_rate = base_abandonment_rate + self.config.get('cart_abandonment_increase', 0.10)
+                else:
+                    abandonment_rate = base_abandonment_rate
+
+                # Skip if this is not actually an abandonment (based on adjusted rate)
+                if random.random() > abandonment_rate:
+                    continue
+
                 # Recovery metrics
                 recovery_email_sent = random.random() < 0.8
                 recovery_email_opened = recovery_email_sent and random.random() < 0.4
                 recovery_email_clicked = recovery_email_opened and random.random() < 0.3
                 is_recovered = recovery_email_clicked and random.random() < 0.25
-                
+
+                # Determine suspected reason (include low_inventory if applicable)
+                if low_inventory_trigger and random.random() < 0.7:
+                    suspected_reason = 'low_inventory'
+                else:
+                    suspected_reason = random.choice(['high_shipping', 'price_concern', 'comparison_shopping',
+                                                      'technical_issue', 'payment_issue'])
+
                 abandonment_record = {
                     'abandonment_id': i + 1,
                     'cart_id': f"CART_{date_info['date_key']}_{i}",
@@ -481,14 +665,17 @@ class FactGenerator:
                     'recovery_date_key': date_info['date_key'] + random.randint(1, 7) if is_recovered else None,
                     'recovery_revenue': cart_value * random.uniform(0.7, 1.0) if is_recovered else 0.0,
                     'abandonment_stage': random.choice(['cart', 'shipping', 'payment']),
-                    'suspected_reason': random.choice(['high_shipping', 'price_concern', 'comparison_shopping', 
-                                                      'technical_issue', 'payment_issue']),
+                    'suspected_reason': suspected_reason,
+                    # NEW COLUMNS - Feature: 001-i-want-to
+                    'low_inventory_trigger': low_inventory_trigger,
+                    'inventory_constrained_items': inventory_constrained_items,
+                    # Standard columns
                     'source_system': 'SHOPIFY_MOBILE_APP',
-                    'etl_timestamp': datetime.now()
+                    'etl_timestamp': dt.now()
                 }
                 abandonment_data.append(abandonment_record)
         
-        # Define explicit schema for cart abandonment fact
+        # Define explicit schema for cart abandonment fact (with new columns)
         abandonment_schema = StructType([
             StructField("abandonment_id", IntegerType(), False),
             StructField("cart_id", StringType(), True),
@@ -507,6 +694,8 @@ class FactGenerator:
             StructField("recovery_revenue", DoubleType(), True),
             StructField("abandonment_stage", StringType(), True),
             StructField("suspected_reason", StringType(), True),
+            StructField("low_inventory_trigger", BooleanType(), True),  # NEW
+            StructField("inventory_constrained_items", IntegerType(), True),  # NEW
             StructField("source_system", StringType(), True),
             StructField("etl_timestamp", TimestampType(), True)
         ])
@@ -516,6 +705,7 @@ class FactGenerator:
         df.write \
             .mode("overwrite") \
             .option("delta.columnMapping.mode", "name") \
+            .option("mergeSchema", "true") \
             .saveAsTable(f"{self.catalog}.{self.schema}.gold_cart_abandonment_fact")
         
         self.spark.sql(f"""
@@ -526,7 +716,41 @@ class FactGenerator:
         """)
         
         logger.info(f"Created cart abandonment fact table with {len(abandonment_data):,} records")
-    
+
+    def create_stockout_events(self):
+        """Create and populate stockout events fact table - Feature: 001-i-want-to"""
+        logger.info("Generating stockout events fact table...")
+
+        if not self.inventory_manager:
+            logger.warning("No InventoryManager - skipping stockout events generation")
+            return
+
+        # Use StockoutGenerator to create events from inventory manager history
+        from stockout_generator import StockoutGenerator
+
+        stockout_gen = StockoutGenerator(self.spark, self.config)
+
+        # Load required dimension data
+        products_df = self.spark.table(f"{self.catalog}.{self.schema}.gold_product_dim")
+        dates_df = self.spark.table(f"{self.catalog}.{self.schema}.gold_date_dim")
+        sales_df = self.spark.table(f"{self.catalog}.{self.schema}.gold_sales_fact")
+
+        # Generate stockout events
+        stockout_events = stockout_gen.generate_stockout_events(
+            inventory_manager=self.inventory_manager,
+            sales_df=sales_df,
+            products_df=products_df,
+            dates_df=dates_df
+        )
+
+        # Create the table
+        stockout_gen.create_stockout_events_table(stockout_events)
+
+        # Log statistics
+        stockout_gen.log_statistics()
+
+        logger.info(f"Created stockout events table with {len(stockout_events):,} events")
+
     def create_demand_forecast_fact(self):
         """Create and populate demand forecast fact table"""
         logger.info("Generating demand forecast fact table...")
@@ -552,7 +776,7 @@ class FactGenerator:
                     confidence_upper = float(int(forecast_quantity + margin))
                     
                     # Actual demand (for historical dates)
-                    if date_info['calendar_date'] < datetime.now().date():
+                    if date_info['calendar_date'] < dt.now().date():
                         # Add some noise to forecast for actuals
                         actual_quantity_calc = int(forecast_quantity + random.gauss(0, forecast_quantity * 0.15))
                         actual_quantity = 0.0 if actual_quantity_calc < 0 else float(actual_quantity_calc)
@@ -594,7 +818,7 @@ class FactGenerator:
                         'model_version': 'v2.3.1',
                         'model_type': 'ensemble_xgboost_lstm',
                         'source_system': 'ML_PLATFORM_PLANNING',
-                        'etl_timestamp': datetime.now()
+                        'etl_timestamp': dt.now()
                     }
                     forecast_data.append(forecast_record)
                     forecast_id += 1

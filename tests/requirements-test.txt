@@ -1,0 +1,13 @@
+# Test dependencies for Databricks MCP-based testing
+# Install with: pip install -r tests/requirements-test.txt
+
+# Core testing
+pytest>=7.4.0
+pytest-xdist>=3.3.0  # Parallel test execution
+pytest-timeout>=2.1.0  # Timeout protection
+
+# Note: NO PySpark or Delta-Spark required!
+# All tests run against actual Databricks workspace via MCP tools
+
+# Optional: Code quality
+pytest-cov>=4.1.0  # Coverage reporting (for Python code, not SQL)
