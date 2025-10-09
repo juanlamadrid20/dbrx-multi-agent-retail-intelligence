@@ -2,7 +2,17 @@
 
 
 # Customer Behavior
-A customer behavior analyst would ask questions that help uncover patterns, trends, and actionable insights about how customers interact with products, channels, and the brand. Based on the data and queries in your notebook, here are some typical questions:
+A customer behavior analyst would ask questions that help uncover patterns, trends, and actionable insights about how customers interact with products, channels, and the brand.
+
+Examples
+
+- what products are trending?
+- Which products or categories are at risk of stockout or overstock?
+- Which segments respond best to personalization?
+- Through which channels do customers prefer to shop?
+- 
+
+
 
 Customer Segmentation & Value
 
