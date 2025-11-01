@@ -8,8 +8,8 @@ Examples
 
 - what products are trending?
 - Which products or categories are at risk of stockout or overstock?
-- Which segments respond best to personalization?
 - Through which channels do customers prefer to shop?
+- Which segments respond best to personalization?
 - 
 
 

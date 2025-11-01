@@ -6,9 +6,9 @@ An inventory manager would typically ask the following types of questions about 
 
 
 - **Location Performance**
-  - How does inventory distribution vary across stores ( warehouses, and regions) ?
+  > How does inventory distribution vary across stores ( warehouses, and regions) ?
   - Which locations have the highest or lowest inventory turnover?
-  - Are there locations with consistently high stockouts or overstock rates?
+  > Are there locations with consistently high stockouts or overstock rates?
 
 - **Stock Levels & Health**
   - What is the average days of supply and stock cover for each location or category?
