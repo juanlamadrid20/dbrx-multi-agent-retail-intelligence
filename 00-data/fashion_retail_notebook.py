@@ -207,22 +207,43 @@ for table, key_cols, expected in tables_to_validate:
             FROM {selected_config.full_schema_name}.{table}
         """).collect()[0]['cnt']
         
+        # Convert expected to string to avoid mixed types in pandas DataFrame
+        expected_str = str(expected) if expected is not None else 'Variable'
+        
         validation_results[table] = {
-            'expected': expected or 'Variable',
-            'actual': actual_count,
+            'expected': expected_str,
+            'actual': str(actual_count),  # Convert to string to ensure consistent types
             'status': '✅' if expected is None or abs(actual_count - expected) / max(expected, 1) < 0.2 else '⚠️'
         }
     except Exception as e:
         validation_results[table] = {
-            'expected': expected or 'Variable',
+            'expected': 'Variable',
             'actual': f'Error: {str(e)}',
             'status': '❌'
         }
 
-# Display results
-import pandas as pd
-df_validation = pd.DataFrame(validation_results).T
-display(df_validation)
+# Display results using print instead of display to avoid Arrow conversion issues
+print("📊 Data Validation Results:")
+print("=" * 80)
+for table_name, results in validation_results.items():
+    print(f"{results['status']} {table_name}")
+    print(f"   Expected: {results['expected']}")
+    print(f"   Actual:   {results['actual']}")
+    print()
+
+# Alternative: Create a simple summary table that's safe to display
+summary_data = []
+for table_name, results in validation_results.items():
+    summary_data.append({
+        'table': table_name,
+        'expected': results['expected'],
+        'actual': results['actual'],
+        'status': results['status']
+    })
+
+# Create Spark DataFrame instead of pandas to avoid Arrow conversion issues
+validation_df = spark.createDataFrame(summary_data)
+validation_df.show(truncate=False)
 
 # COMMAND ----------
 
