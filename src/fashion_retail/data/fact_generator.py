@@ -12,9 +12,9 @@ import math
 import logging
 
 # Import new inventory-aligned components
-from inventory_manager import InventoryManager
-from sales_validator import SalesValidator, PurchaseRequest, BatchPurchaseBuilder
-from stockout_generator import StockoutGenerator
+from ..inventory.manager import InventoryManager
+from ..inventory.validator import SalesValidator, PurchaseRequest, BatchPurchaseBuilder
+from ..inventory.stockout_generator import StockoutGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -726,7 +726,7 @@ class FactGenerator:
             return
 
         # Use StockoutGenerator to create events from inventory manager history
-        from stockout_generator import StockoutGenerator
+        # Import already available at top of file
 
         stockout_gen = StockoutGenerator(self.spark, self.config)
 

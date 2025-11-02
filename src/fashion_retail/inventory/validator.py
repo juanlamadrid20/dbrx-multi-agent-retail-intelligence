@@ -25,6 +25,8 @@ from typing import Dict, Tuple, List, Optional
 from dataclasses import dataclass
 import logging
 
+from .manager import InventoryManager
+
 logger = logging.getLogger(__name__)
 
 

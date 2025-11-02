@@ -5,12 +5,18 @@ Main orchestrator for creating synthetic star schema data in Databricks
 
 import sys
 import time
-import os
-import importlib.util
 from datetime import datetime, timedelta
 from pyspark.sql import SparkSession
 from delta.tables import DeltaTable
 import logging
+from typing import Union, Dict, Any
+
+from .config import FashionRetailConfig
+from .data.dimension_generator import DimensionGenerator
+from .data.fact_generator import FactGenerator
+from .data.aggregates import AggregateGenerator
+from .inventory.manager import InventoryManager
+from .inventory.validator import SalesValidator
 
 # Configure logging
 logging.basicConfig(
@@ -22,11 +28,18 @@ logger = logging.getLogger(__name__)
 class FashionRetailDataGenerator:
     """Main orchestrator for fashion retail data generation"""
     
-    def __init__(self, spark, config):
+    def __init__(self, spark: SparkSession, config: Union[FashionRetailConfig, Dict[str, Any]]):
         self.spark = spark
-        self.config = config
-        self.catalog = config['catalog']
-        self.schema = config['schema']
+        
+        # Handle both config objects and dictionaries for backward compatibility
+        if isinstance(config, dict):
+            self.config = config
+            self.catalog = config['catalog']
+            self.schema = config['schema']
+        else:
+            self.config = config.to_dict()
+            self.catalog = config.catalog
+            self.schema = config.schema
         
     def setup_catalog(self):
         """Create catalog and schema if they don't exist"""
@@ -64,6 +77,7 @@ class FashionRetailDataGenerator:
                 'gold_customer_event_fact',
                 'gold_cart_abandonment_fact',
                 'gold_demand_forecast_fact',
+                'gold_stockout_events',  # Added new table
                 # Bridge/Aggregates
                 'gold_customer_product_affinity_agg',
                 'gold_size_fit_bridge',
@@ -81,15 +95,6 @@ class FashionRetailDataGenerator:
         """Create dimension tables"""
         logger.info("Creating dimension tables...")
         
-        # Get current directory for module loading
-        current_dir = os.getcwd()
-
-        # Load dimension generator module
-        spec = importlib.util.spec_from_file_location("fashion_retail_dimension_generator",
-                                                     os.path.join(current_dir, "fashion-retail-dimension-generator.py"))
-        dimension_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(dimension_module)
-        DimensionGenerator = dimension_module.DimensionGenerator
         dim_gen = DimensionGenerator(self.spark, self.config)
         
         # Create dimension tables with Delta features
@@ -110,22 +115,6 @@ class FashionRetailDataGenerator:
         # Initialize InventoryManager and SalesValidator
         logger.info("Initializing inventory alignment components...")
 
-        # Get current directory for module loading
-        current_dir = os.getcwd()
-
-        # Load inventory management modules
-        inventory_spec = importlib.util.spec_from_file_location("inventory_manager",
-                                                               os.path.join(current_dir, "inventory_manager.py"))
-        inventory_module = importlib.util.module_from_spec(inventory_spec)
-        inventory_spec.loader.exec_module(inventory_module)
-        InventoryManager = inventory_module.InventoryManager
-
-        sales_validator_spec = importlib.util.spec_from_file_location("sales_validator",
-                                                                      os.path.join(current_dir, "sales_validator.py"))
-        sales_validator_module = importlib.util.module_from_spec(sales_validator_spec)
-        sales_validator_spec.loader.exec_module(sales_validator_module)
-        SalesValidator = sales_validator_module.SalesValidator
-
         # Initialize components
         inventory_manager = InventoryManager(self.spark, self.config)
         sales_validator = SalesValidator(inventory_manager, self.config)
@@ -139,13 +128,6 @@ class FashionRetailDataGenerator:
         inventory_manager.log_statistics()
 
         logger.info("Inventory alignment components initialized successfully")
-
-        # Load fact generator module
-        spec = importlib.util.spec_from_file_location("fashion_retail_fact_generator",
-                                                     os.path.join(current_dir, "fashion-retail-fact-generator.py"))
-        fact_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(fact_module)
-        FactGenerator = fact_module.FactGenerator
 
         # Pass inventory components to FactGenerator
         fact_gen = FactGenerator(self.spark, self.config,
@@ -175,15 +157,6 @@ class FashionRetailDataGenerator:
         """Create bridge and aggregate tables"""
         logger.info("Creating bridge and aggregate tables...")
         
-        # Get current directory for module loading
-        current_dir = os.getcwd()
-
-        # Load aggregate generator module
-        spec = importlib.util.spec_from_file_location("fashion_retail_aggregates",
-                                                     os.path.join(current_dir, "fashion-retail-aggregates.py"))
-        aggregate_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(aggregate_module)
-        AggregateGenerator = aggregate_module.AggregateGenerator
         agg_gen = AggregateGenerator(self.spark, self.config)
         
         # Create bridge/aggregate tables
@@ -414,6 +387,7 @@ class FashionRetailDataGenerator:
             logger.error(f"Pipeline failed: {str(e)}")
             raise
 
+
 def main():
     """Main entry point"""
     
@@ -424,41 +398,14 @@ def main():
         .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
         .getOrCreate()
     
-    # Configuration
-    config = {
-        'catalog': 'juan_dev',
-        'schema': 'retail',
-        'force_recreate': True,
-
-        # Scale parameters
-        'customers': 100_000,
-        'products': 10_000,
-        'locations': 13,
-        'historical_days': 730,
-        'events_per_day': 500_000,
-
-        # Features
-        'enable_cdc': True,
-        'enable_liquid_clustering': True,
-
-        # Optimization
-        'z_order_keys': {
-            'gold_sales_fact': ['date_key', 'product_key'],
-            'gold_inventory_fact': ['product_key', 'location_key'],
-            'gold_customer_event_fact': ['date_key', 'customer_key']
-        },
-
-        # NEW: Inventory alignment parameters (Feature: 001-i-want-to)
-        'random_seed': 42,  # For reproducible data generation
-        'target_stockout_rate': 0.075,  # Target 7.5% stockout rate (midpoint of 5-10%)
-        'cart_abandonment_increase': 0.10,  # +10 percentage points for low inventory
-        'return_delay_days': (1, 3),  # Returns replenish inventory 1-3 days later
-        'low_inventory_threshold': 5,  # Trigger cart abandonment increase when qty < 5
-    }
+    # Use new config system
+    from .config import get_config
+    config = get_config()
     
     # Run generator
     generator = FashionRetailDataGenerator(spark, config)
     generator.run()
+
 
 if __name__ == "__main__":
     main()
