@@ -34,7 +34,8 @@ DOMAINS = {
             "Customer lifecycle analysis",
             "Basket analysis"
         ],
-        genie_space_id="01f0b7572b3a185d9f69cd89bc4c7579",  # TODO: Set actual space ID
+        
+        genie_space_id="01f09cdbacf01b5fa7ff7c237365502c",  # TODO: Set actual space ID
         uc_function_name="juan_dev.genai.query_customer_behavior_genie"
     ),
     "inventory": DomainConfig(
@@ -49,7 +50,7 @@ DOMAINS = {
             "Inventory turnover analysis",
             "Supply chain issues"
         ],
-        genie_space_id="01f09cdef66116e5940de4b384623be9",  # TODO: Set actual space ID
+        genie_space_id="01f09cdef66116e5940de4b384623be9",
         uc_function_name="juan_dev.genai.query_inventory_genie"
     )
 }

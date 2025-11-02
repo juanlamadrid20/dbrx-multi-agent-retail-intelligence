@@ -1,33 +1,42 @@
-# Multi-Tool Calling Agent - Notebooks
+# Multi-Agent System with Genie - Notebooks
 
 Run these notebooks **in order** in Databricks.
 
 ## Execution Order
 
-### 1. `01-register-uc-functions.ipynb`
-**Purpose**: Register Genie tools as Unity Catalog Functions
+### ~~1. `01-register-uc-functions.ipynb`~~ (DEPRECATED)
+**Status**: No longer needed! We use GenieAgent instead of custom UC Functions.
 
-**What it does**:
-- Registers `juan_dev.genai.query_customer_behavior_genie`
-- Registers `juan_dev.genai.query_inventory_genie`
-- Verifies registration
-
-**Dependencies**:
-- `unitycatalog-ai`
-- `databricks-sdk`
-
-**Run once**: Only needs to be re-run if tool logic changes
+See notebook for migration details.
 
 ---
 
-### 2. `02-create-agent.ipynb`
-**Purpose**: Create LangGraph agent and log to MLflow
+### 0. `00-test-genie-access.ipynb` (Optional but Recommended)
+**Purpose**: Test Genie space access and responses before creating the agent
 
 **What it does**:
-- Loads UC Functions as tools via UCFunctionToolkit
-- Creates agent using `create_react_agent` (LangGraph pattern)
-- Logs agent to MLflow
-- Runs quick smoke test
+- Verifies permissions on both Genie spaces
+- Sends domain-specific test queries
+- Validates actual responses (not just permissions)
+- Shows full responses and generated SQL
+- Supports custom query testing
+
+**When to use**:
+- Before running 02-create-agent.ipynb for the first time
+- Debugging Genie access issues
+- Testing new queries
+
+---
+
+### 1. `02-create-agent.ipynb`
+**Purpose**: Create multi-agent system with GenieAgent and log to MLflow
+
+**What it does**:
+- Creates supervisor agent coordinating multiple Genie agents
+- Uses `GenieAgent` from `databricks_langchain` for Genie Space access
+- Automatic authentication (no UC Functions needed!)
+- Logs multi-agent system to MLflow
+- Runs quick smoke tests
 
 **Dependencies**:
 - `mlflow`
@@ -35,11 +44,11 @@ Run these notebooks **in order** in Databricks.
 - `langgraph`
 - `langchain-core`
 
-**Pattern**: Based on [Databricks LangGraph Guide](https://docs.databricks.com/aws/en/notebooks/source/generative-ai/responses-agent-langgraph.html)
+**Pattern**: Based on [Databricks Multi-Agent Genie Guide](https://docs.databricks.com/aws/en/generative-ai/agent-framework/multi-agent-genie)
 
 ---
 
-### 3. `03-test-agent.ipynb`
+### 2. `03-test-agent.ipynb`
 **Purpose**: Comprehensive testing of all functional requirements
 
 **Test Scenarios**:
@@ -57,12 +66,18 @@ Run these notebooks **in order** in Databricks.
 
 ---
 
-## Old Notebooks (Deprecated)
+## Architecture Change
 
-- `01-setup-agent.ipynb` - Old monolithic setup (replaced by 01-02 split)
-- `02-test-agent.ipynb` - Old test notebook (replaced by 03)
+**Previous approach** (deprecated):
+- Custom UC Functions calling Genie API
+- Authentication issues in serverless Spark
+- Required UC Function registration
 
-These can be deleted after verifying the new notebooks work.
+**Current approach** (recommended):
+- GenieAgent from databricks_langchain
+- Automatic authentication
+- Supervisor pattern for multi-domain queries
+- No UC Function registration needed
 
 ---
 
@@ -71,20 +86,22 @@ These can be deleted after verifying the new notebooks work.
 ### Import errors
 Run the `%pip install` cell in each notebook to install dependencies.
 
-### UC Function not found
-Re-run `01-register-uc-functions.ipynb` to register the functions.
+### GenieAgent import errors
+Ensure `databricks-langchain` is installed: `%pip install --upgrade databricks-langchain`
+
+### Genie queries timing out
+Run `00-test-genie-access.ipynb` to verify Genie spaces are responding. The SDK now uses `wait_get_message_genie_completed()` which properly waits for responses.
 
 ### Agent not found in MLflow
 Re-run `02-create-agent.ipynb` to create and log the agent.
 
 ### Genie space ID errors
-Update space IDs in `../src/config/agent_config.py` and re-register UC Functions.
+Update space IDs in `../src/config/agent_config.py`. No re-registration needed!
 
 ---
 
 ## Configuration
 
 Agent configuration is in:
-- `../src/config/agent_config.py` - Domain configs, UC Function names, agent parameters
+- `../src/config/agent_config.py` - Domain configs (Genie space IDs), agent parameters
 - `../src/config/prompts.py` - System prompt
-- `../src/tools/` - UC Function implementations
