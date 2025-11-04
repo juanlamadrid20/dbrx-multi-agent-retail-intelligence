@@ -14,3 +14,4 @@ __all__ = [
     'query_inventory_genie',
     'register_inventory_tool',
 ]
+

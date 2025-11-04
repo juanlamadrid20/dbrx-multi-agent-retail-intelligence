@@ -17,3 +17,4 @@ __all__ = [
     'DOMAIN_RELATIONSHIPS',
     'get_suggestions_for_domain',
 ]
+

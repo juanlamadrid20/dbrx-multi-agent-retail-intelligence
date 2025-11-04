@@ -133,3 +133,4 @@ def get_all_uc_function_names() -> List[str]:
         ['juan_dev.genai.query_customer_behavior_genie', 'juan_dev.genai.query_inventory_genie']
     """
     return [domain.uc_function_name for domain in DOMAINS.values()]
+

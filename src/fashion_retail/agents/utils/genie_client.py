@@ -174,3 +174,4 @@ def format_genie_response(answer: str, sql: Optional[str], source_name: str) -> 
     if sql:
         result += f"\n\n[SQL Query]: {sql}"
     return result
+

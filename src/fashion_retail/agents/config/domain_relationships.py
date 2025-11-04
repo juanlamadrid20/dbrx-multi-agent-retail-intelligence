@@ -157,3 +157,4 @@ def format_suggestions(suggestions: List[str]) -> str:
         formatted += f"{i}. {suggestion}\n"
 
     return formatted
+

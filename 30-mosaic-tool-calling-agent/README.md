@@ -165,7 +165,7 @@ from unitycatalog.ai.core.databricks import DatabricksFunctionClient
 client = DatabricksFunctionClient()
 
 # Register customer behavior tool
-from tools.customer_behavior import query_customer_behavior_genie
+from fashion_retail.agents.tools.customer_behavior import query_customer_behavior_genie
 customer_func = client.create_python_function(
     func=query_customer_behavior_genie,
     catalog="main",

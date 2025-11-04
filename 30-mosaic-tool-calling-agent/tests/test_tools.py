@@ -8,17 +8,17 @@ Validates FR-003, FR-004, FR-008 (error handling).
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 import sys
-sys.path.append('../src')
+sys.path.append('../../src')
 
-from tools.customer_behavior import query_customer_behavior_genie
-from tools.inventory import query_inventory_genie
+from fashion_retail.agents.tools.customer_behavior import query_customer_behavior_genie
+from fashion_retail.agents.tools.inventory import query_inventory_genie
 from fixtures.genie_responses import mock_genie_message, mock_genie_conversation, mock_genie_error
 
 
 class TestCustomerBehaviorTool:
     """Tests for customer behavior Genie tool (FR-003)"""
 
-    @patch('tools.customer_behavior.WorkspaceClient')
+    @patch('fashion_retail.agents.tools.customer_behavior.WorkspaceClient')
     def test_successful_query(self, mock_client_class):
         """Test successful Genie query returns formatted response"""
         # Setup mocks
@@ -40,7 +40,7 @@ class TestCustomerBehaviorTool:
         assert "15%" in result
         print("✅ test_successful_query PASSED")
 
-    @patch('tools.customer_behavior.WorkspaceClient')
+    @patch('fashion_retail.agents.tools.customer_behavior.WorkspaceClient')
     def test_query_with_sql(self, mock_client_class):
         """Test that SQL query is included in response when available"""
         # Setup mocks
@@ -61,7 +61,7 @@ class TestCustomerBehaviorTool:
         assert "SELECT" in result
         print("✅ test_query_with_sql PASSED")
 
-    @patch('tools.customer_behavior.WorkspaceClient')
+    @patch('fashion_retail.agents.tools.customer_behavior.WorkspaceClient')
     def test_error_handling(self, mock_client_class):
         """Test graceful error handling (FR-008)"""
         # Setup mock to raise error
@@ -82,7 +82,7 @@ class TestCustomerBehaviorTool:
 class TestInventoryTool:
     """Tests for inventory Genie tool (FR-004)"""
 
-    @patch('tools.inventory.WorkspaceClient')
+    @patch('fashion_retail.agents.tools.inventory.WorkspaceClient')
     def test_successful_query(self, mock_client_class):
         """Test successful inventory query"""
         # Setup mocks
@@ -104,7 +104,7 @@ class TestInventoryTool:
         assert "low stock" in result
         print("✅ test_successful_query PASSED")
 
-    @patch('tools.inventory.WorkspaceClient')
+    @patch('fashion_retail.agents.tools.inventory.WorkspaceClient')
     def test_error_handling(self, mock_client_class):
         """Test graceful error handling for inventory tool (FR-008)"""
         # Setup mock to raise error

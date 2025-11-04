@@ -155,3 +155,4 @@ def test_all_genie_spaces(
             print("⚠️  Some Genie space tests failed. Check permissions and try again.")
 
     return all_passed
+
