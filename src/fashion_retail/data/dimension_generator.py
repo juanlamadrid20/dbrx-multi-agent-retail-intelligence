@@ -28,10 +28,17 @@ class DimensionGenerator:
         """Create and populate customer dimension with SCD Type 2"""
         logger.info("Generating customer dimension...")
 
-        # Use configured number of customers, with a reasonable max for testing
+        # Use configured number of customers
         configured_customers = self.config['customers']
-        num_customers = configured_customers if configured_customers <= 10000 else 10000
-        logger.info(f"Generating {num_customers} customers (from config: {configured_customers})...")
+        num_customers = configured_customers
+        
+        # Warn if generating large number of customers (performance consideration)
+        if num_customers > 100000:
+            logger.warning(f"Generating {num_customers:,} customers - this may take significant time and memory")
+        elif num_customers > 50000:
+            logger.info(f"Generating {num_customers:,} customers - this may take several minutes")
+        
+        logger.info(f"Generating {num_customers:,} customers...")
 
         # Define customer segments with realistic distributions and characteristics
         customer_segments = {
@@ -222,10 +229,17 @@ class DimensionGenerator:
         """Create and populate product dimension"""
         logger.info("Generating product dimension...")
         
-        # Use configured number of products, with a reasonable max for testing
+        # Use configured number of products
         configured_products = self.config['products']
-        num_products = configured_products if configured_products <= 5000 else 5000
-        logger.info(f"Generating {num_products} products (from config: {configured_products})...")
+        num_products = configured_products
+        
+        # Warn if generating large number of products (performance consideration)
+        if num_products > 50000:
+            logger.warning(f"Generating {num_products:,} products - this may take significant time and memory")
+        elif num_products > 20000:
+            logger.info(f"Generating {num_products:,} products - this may take several minutes")
+        
+        logger.info(f"Generating {num_products:,} products...")
         
         # Product hierarchies
         categories = {
@@ -363,8 +377,22 @@ class DimensionGenerator:
         logger.info(f"Created product dimension with {len(products_data[:num_products]):,} records")
     
     def create_location_dimension(self):
-        """Create and populate location dimension"""
+        """Create and populate location dimension
+        
+        Note: Location dimension uses a fixed set of 13 locations (10 stores, 2 warehouses, 1 DC).
+        The configured 'locations' parameter is currently ignored. This is by design to maintain
+        realistic geographic distribution and store formats. To add more locations, modify the
+        locations_data list below.
+        """
         logger.info("Generating location dimension...")
+        
+        configured_locations = self.config.get('locations', 13)
+        if configured_locations != 13:
+            logger.warning(
+                f"Location dimension uses a fixed set of 13 locations. "
+                f"Configured value ({configured_locations}) is ignored. "
+                f"To customize locations, modify the locations_data list in create_location_dimension()."
+            )
         
         locations_data = [
             # Flagship stores

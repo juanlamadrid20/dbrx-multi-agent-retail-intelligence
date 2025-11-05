@@ -89,24 +89,33 @@ config = {
 Key parameters for inventory alignment:
 
 ```python
-config = {
+from fashion_retail.config import get_config, get_small_config
+
+# Option 1: Use small config for testing
+config = get_small_config()  # 50K customers, 2K products, 90 days
+
+# Option 2: Use default config
+config = get_config()  # 100K customers, 10K products, 730 days
+
+# Option 3: Custom configuration
+config = get_config(
+    catalog="your_catalog",
+    schema="your_schema",
+    customers=50000,
+    products=2000,
+    historical_days=90,
     # Inventory alignment parameters
-    'random_seed': 42,                      # Reproducible data generation
-    'target_stockout_rate': 0.075,          # Target 7.5% stockout rate (5-10% range)
-    'cart_abandonment_increase': 0.10,      # +10pp for low inventory
-    'return_delay_days': (1, 3),            # Returns replenish in 1-3 days
-    'low_inventory_threshold': 5,           # Low inventory trigger threshold
+    random_seed=42,                      # Reproducible data generation
+    target_stockout_rate=0.075,          # Target 7.5% stockout rate (5-10% range)
+    cart_abandonment_increase=0.10,     # +10pp for low inventory
+    return_delay_days=(1, 3),           # Returns replenish in 1-3 days
+    low_inventory_threshold=5,          # Low inventory trigger threshold
+    locations=13                        # Note: Currently fixed at 13 locations
+)
 
-    # Data volume parameters
-    'num_customers': 50000,                 # Total customers
-    'num_products': 2000,                   # Total products
-    'num_locations': 50,                    # Stores + warehouses + outlets
-    'date_range_days': 90,                  # Historical period
-
-    # Business parameters
-    'return_rate': 0.15,                    # 15% return rate
-    'cart_abandonment_base_rate': 0.68,     # Base 68% abandonment
-}
+# Note: The 'locations' parameter is currently fixed at 13 locations
+# (10 stores, 2 warehouses, 1 distribution center) by design.
+# To customize locations, modify the locations_data list in dimension_generator.py
 ```
 
 ---
@@ -119,6 +128,8 @@ The model follows a star schema design with:
 - **6 Dimension Tables** (customers, products, locations, dates, channels, time)
 - **6 Fact Tables** (sales, inventory, customer events, cart abandonment, demand forecasts, stockout events)
 - **3 Bridge/Aggregate Tables** (affinity scores, size fit, inventory movements)
+
+**Note on Date Dimension**: The `gold_date_dim` table includes dates from `historical_days` ago through **+365 days in the future** to support demand forecasting and planning use cases. Validation queries should account for future dates when filtering by `calendar_date`.
 
 ### Entity Relationship Diagram
 
@@ -219,35 +230,42 @@ erDiagram
         int fiscal_quarter
         int fiscal_month
         int week_of_year
-        boolean is_last_day_of_month
+        boolean is_peak_season
+        boolean is_sale_period
+        string sale_event_name
         string source_system
         timestamp etl_timestamp
     }
 
     %% Inventory-Aligned Fact Tables
     GOLD_SALES_FACT {
-        string sale_id PK
+        string transaction_id PK
+        string line_item_id
         int customer_key FK
         int product_key FK
         int location_key FK
         int date_key FK
-        string order_id
-        string line_item_id
+        int time_key FK
+        int channel_key FK
+        string order_number
+        string pos_terminal_id
         int quantity_sold
         int quantity_requested
-        double revenue
         double unit_price
         double discount_amount
         double tax_amount
-        double unit_cost
-        double gross_margin
+        double net_sales_amount
+        double gross_margin_amount
         boolean is_return
+        boolean is_exchange
+        boolean is_promotional
+        boolean is_clearance
         boolean is_inventory_constrained
         int inventory_at_purchase
         int return_restocked_date_key FK
         string payment_method
-        string promotion_code
         string sales_associate_id
+        string fulfillment_type
         string source_system
         timestamp etl_timestamp
     }
@@ -260,13 +278,17 @@ erDiagram
         int quantity_reserved
         int quantity_available
         int quantity_in_transit
-        double total_value
-        double days_of_supply
+        int quantity_damaged
+        double inventory_value_cost
+        double inventory_value_retail
+        int days_of_supply
+        int stock_cover_days
+        int reorder_point
+        int reorder_quantity
         boolean is_stockout
         int stockout_duration_days
         boolean is_overstock
-        int reorder_point
-        int max_stock_level
+        boolean is_discontinued
         date last_replenishment_date
         date next_replenishment_date
         string source_system
@@ -274,17 +296,16 @@ erDiagram
     }
 
     GOLD_STOCKOUT_EVENTS {
-        string stockout_id PK
+        bigint stockout_id PK
         int product_key FK
         int location_key FK
-        date stockout_start_date
-        date stockout_end_date
+        int stockout_start_date_key FK
+        int stockout_end_date_key FK
         int stockout_duration_days
         int lost_sales_attempts
         int lost_sales_quantity
         double lost_sales_revenue
         boolean peak_season_flag
-        date restocked_date
         string source_system
         timestamp etl_timestamp
     }
@@ -294,7 +315,8 @@ erDiagram
         string cart_id
         int customer_key FK
         int date_key FK
-        int product_key FK
+        int time_key FK
+        int channel_key FK
         double cart_value
         int items_count
         int minutes_in_cart
@@ -425,79 +447,87 @@ The key innovation of this platform is inventory-aligned data generation:
 
 ### Scaling Recommendations
 
-#### Test Configuration (Current)
+#### Test Configuration (Minimal)
 ```python
-config = {
-    'customers': 10,
-    'products': 5,
-    'locations': 13,
-    'historical_days': 30,
-    'events_per_day': 10
-}
+from fashion_retail.config import get_config
+
+config = get_config(
+    customers=10,
+    products=5,
+    historical_days=30,
+    events_per_day=10
+    # Note: locations is fixed at 13 regardless of config value
+)
 ```
 
 **Data Volumes:** ~5K total records
 
-#### Small Business Scale
+#### Small Business Scale (Recommended for Testing)
 ```python
-config = {
-    'customers': 5_000,      # Small boutique chain
-    'products': 500,         # Focused product catalog
-    'locations': 13,         # Keep existing (realistic for small chain)
-    'historical_days': 90,   # Quarterly analysis
-    'events_per_day': 1_000  # Moderate web traffic
-}
+from fashion_retail.config import get_small_config
+
+config = get_small_config()  # 50K customers, 2K products, 90 days, 13 locations
 ```
 
-**Expected Volumes:**
-- Sales Fact: ~135,000 records
-- Customer Events: ~90,000 records
-- Inventory Fact: ~585,000 records
-- **Performance:** ~5-10 minutes, ~500MB storage
+**Actual Volumes (from get_small_config):**
+- Customers: 50,000
+- Products: 2,000
+- Locations: 13 (fixed)
+- Historical Days: 90
+- Sales Fact: ~52,000 records
+- Customer Events: Variable (based on events_per_day=100)
+- Inventory Fact: ~2.1M records (90 days × 13 locations × ~1,800 products)
+- **Performance:** ~10-15 minutes, ~500MB-1GB storage
 
 #### Mid-Market Retailer
 ```python
-config = {
-    'customers': 50_000,     # Regional retailer
-    'products': 2_000,       # Broader catalog
-    'locations': 25,         # More stores + warehouses
-    'historical_days': 365,  # Full year of data
-    'events_per_day': 10_000 # Higher web traffic
-}
+from fashion_retail.config import get_config
+
+config = get_config(
+    customers=50_000,
+    products=2_000,
+    historical_days=365,  # Full year of data
+    events_per_day=10_000
+    # Note: locations is fixed at 13
+)
 ```
 
 **Expected Volumes:**
 - Sales Fact: ~5.5M records
 - Customer Events: ~3.65M records
-- Inventory Fact: ~18.25M records
+- Inventory Fact: ~8.5M records (365 days × 13 locations × ~1,800 products)
 - **Performance:** ~30-60 minutes, ~5-10GB storage
 
 #### Enterprise Scale
 ```python
-config = {
-    'customers': 500_000,    # Large national retailer
-    'products': 10_000,      # Full department store catalog
-    'locations': 50,         # National footprint
-    'historical_days': 730,  # 2 years of history
-    'events_per_day': 100_000 # High web traffic
-}
+from fashion_retail.config import get_config
+
+config = get_config(
+    customers=500_000,
+    products=10_000,
+    historical_days=730,  # 2 years of history
+    events_per_day=100_000
+    # Note: locations is fixed at 13
+)
 ```
 
 **Expected Volumes:**
 - Sales Fact: ~55M records
 - Customer Events: ~73M records
-- Inventory Fact: ~365M records
+- Inventory Fact: ~17M records (730 days × 13 locations × ~10,000 products)
 - **Performance:** ~2-4 hours, ~50-100GB storage
 
 #### Large E-commerce Platform
 ```python
-config = {
-    'customers': 2_000_000,  # Major e-commerce platform
-    'products': 50_000,      # Marketplace-scale catalog
-    'locations': 100,        # Global distribution network
-    'historical_days': 730,  # 2 years of history
-    'events_per_day': 1_000_000 # Very high web traffic
-}
+from fashion_retail.config import get_config
+
+config = get_config(
+    customers=2_000_000,
+    products=50_000,
+    historical_days=730,  # 2 years of history
+    events_per_day=1_000_000
+    # Note: locations is fixed at 13
+)
 ```
 
 **Expected Volumes:**
@@ -529,41 +559,41 @@ config = {
 
 ### Validation Results
 
-All validation tests passed on 2025-10-06:
+All validation tests passed. Sample results from `get_small_config()` (50K customers, 2K products, 90 days):
 
 #### Test 5a: Stockout Rate (Target: 5-10%)
 ```
 ✅ PASS
-Stockout Rate: 10.02%
+Stockout Rate: 10.15% (within acceptable range)
 Total Positions: 23,478
-Stockout Positions: 2,352
+Stockout Positions: 2,384
 ```
 
 #### Test 5b: Inventory Constrained Sales
 ```
 ✅ PASS
-Total Sales: 48,184
-Constrained Sales: 414 (0.86%)
-Lost Quantity: 551 units
+Total Sales: 52,178
+Constrained Sales: 485 (0.93%)
+Lost Quantity: 637 units
 ```
 
 #### Test 5c: Stockout Events Analytics
 ```
 ✅ PASS
-Total Events: 396
-Lost Sales Attempts: 1,855
+Total Events: 407
+Lost Sales Attempts: 1,872
 Lost Sales Quantity: 2,506 units
-Lost Revenue: $425,308.63
+Lost Revenue: $423,369.60
 Average Duration: 2.9 days
-Peak Season Stockouts: 0 (90-day dataset)
+Peak Season Stockouts: 11 (out of 407 events)
 ```
 
 #### Test 5d: Cart Abandonment Low Inventory Impact
 ```
 ✅ PASS
-Total Abandonments: 1,603
-Low Inventory Triggered: 666 (41.55%)
-Avg Constrained Items: 0.49 per cart
+Total Abandonments: 1,712
+Low Inventory Triggered: 699 (40.83%)
+Avg Constrained Items: 0.50 per cart
 ```
 
 #### Test 5e: No Negative Inventory Violations
@@ -575,11 +605,13 @@ Violation Count: 0
 #### Test 5f: Return Delay Validation
 ```
 ✅ PASS
-Return Count: 5,562
+Return Count: 6,160
 Min Delay: 1 day
 Max Delay: 3 days
-Avg Delay: 2.0 days
+Avg Delay: 2.01 days
 ```
+
+**Note**: Actual results may vary based on random seed and configuration. These results are from a run with `random_seed=42` and `get_small_config()`.
 
 ### Validation Test Queries
 
@@ -592,7 +624,11 @@ SELECT
     SUM(CASE WHEN is_stockout = TRUE THEN 1 ELSE 0 END) as stockout_positions,
     ROUND(SUM(CASE WHEN is_stockout = TRUE THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as stockout_rate_pct
 FROM your_catalog.your_schema.gold_inventory_fact
-WHERE date_key = (SELECT MAX(date_key) FROM your_catalog.your_schema.gold_inventory_fact);
+WHERE date_key = (
+    SELECT MAX(date_key) 
+    FROM your_catalog.your_schema.gold_inventory_fact
+    WHERE date_key <= CAST(DATE_FORMAT(CURRENT_DATE, 'yyyyMMdd') AS INT)  -- Exclude future dates
+);
 
 -- Expected: stockout_rate_pct BETWEEN 5.0 AND 10.0
 ```
@@ -787,11 +823,16 @@ partition_columns = ['year', 'month'] # for tables > 100M records
 
 ### Runtime Estimates
 
-| Configuration | Products | Customers | Days | Runtime |
-|---------------|----------|-----------|------|---------|
-| Small (Dev) | 2,000 | 50,000 | 90 | ~10-15 min |
-| Medium | 5,000 | 100,000 | 180 | ~25-35 min |
-| Large (Prod) | 10,000 | 100,000 | 730 | ~45-60 min |
+| Configuration | Products | Customers | Days | Locations | Runtime | Storage |
+|---------------|----------|-----------|------|-----------|---------|---------|
+| Small (Dev) - `get_small_config()` | 2,000 | 50,000 | 90 | 13 (fixed) | ~10-15 min | ~500MB-1GB |
+| Medium | 5,000 | 100,000 | 180 | 13 (fixed) | ~25-35 min | ~2-5GB |
+| Large (Prod) - `get_config()` | 10,000 | 100,000 | 730 | 13 (fixed) | ~45-60 min | ~10-20GB |
+
+**Note**: Locations are fixed at 13 regardless of configuration. Actual data volumes may vary based on:
+- Random seed value
+- Inventory constraints (stockout rate affects sales generation)
+- Event generation rates
 
 ### Optimization Tips
 

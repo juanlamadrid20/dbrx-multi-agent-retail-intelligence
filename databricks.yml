@@ -5,18 +5,8 @@ resources:
   jobs:
     fashion_retail_data_generation:
       name: "Fashion Retail Data Generation"
-      # job_clusters:
-      #   - job_cluster_key: main
-      #     new_cluster:
-      #       spark_version: "13.3.x-scala2.12"
-      #       node_type_id: "i3.xlarge"
-      #       num_workers: 2
-      #       spark_conf:
-      #         "spark.sql.adaptive.enabled": "true"
-      #         "spark.sql.adaptive.coalescePartitions.enabled": "true"
       tasks:
         - task_key: generate_data
-          # job_cluster_key: main
           notebook_task:
             notebook_path: ./00-data/fashion_retail_notebook.py
             source: WORKSPACE
@@ -27,19 +17,10 @@ resources:
     
     fashion_retail_cleanup:
       name: "Fashion Retail Table Cleanup"
-      # job_clusters:
-      #   - job_cluster_key: cleanup
-      #     new_cluster:s
-      #       spark_version: "13.3.x-scala2.12"
-      #       node_type_id: "i3.large"
-      #       num_workers: 0  # Single node for cleanup operations
-      #       spark_conf:
-      #         "spark.sql.adaptive.enabled": "true"
       tasks:
         - task_key: cleanup_tables
-          # job_cluster_key: cleanup
           notebook_task:
-            notebook_path: ./notebooks/util_notebook.py
+            notebook_path: ./00-data/util_notebook.py
             source: WORKSPACE
           timeout_seconds: 1800  # 30 minutes should be enough for cleanup
       email_notifications:
