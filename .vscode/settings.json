@@ -3,9 +3,9 @@
     "jupyter.interactiveWindow.cellMarker.default": "# COMMAND ----------",
    "workbench.colorCustomizations": {
     "activityBar.activeBackground": "#ff8b7a",
-    "activityBar.background": "#ff8b7a",
-    "activityBar.foreground": "#15202b",
-    "activityBar.inactiveForeground": "#15202b99",
+    "activityBar.background": "#030303",
+    "activityBar.foreground": "#fcfdfd",
+    "activityBar.inactiveForeground": "#e15e01",
     "activityBarBadge.background": "#dfffe3",
     "activityBarBadge.foreground": "#15202b",
     "commandCenter.border": "#15202b99",
@@ -20,5 +20,5 @@
     "titleBar.inactiveBackground": "#ff5f4799",
     "titleBar.inactiveForeground": "#15202b99"
 },
-    "peacock.color": "#FF5F47",
+    
 }

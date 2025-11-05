@@ -1,0 +1,62 @@
+[
+  {
+    "request": "What are the top cart abandonment products?",
+    "expected_sources": ["customer_behavior"],
+    "expected_suggestions": true,
+    "complexity": "simple"
+  },
+  {
+    "request": "What products are frequently abandoned in carts and do we have inventory issues with those items?",
+    "expected_sources": ["customer_behavior", "inventory"],
+    "expected_suggestions": true,
+    "complexity": "complex"
+  },
+  {
+    "request": "Show me stockout events in the last 30 days",
+    "expected_sources": ["inventory"],
+    "expected_suggestions": true,
+    "complexity": "simple"
+  },
+  {
+    "request": "Which customer segments have the highest lifetime value?",
+    "expected_sources": ["customer_behavior"],
+    "expected_suggestions": true,
+    "complexity": "simple"
+  },
+  {
+    "request": "Analyze cart abandonment patterns and correlate with inventory stockouts",
+    "expected_sources": ["customer_behavior", "inventory"],
+    "expected_suggestions": true,
+    "complexity": "complex"
+  },
+  {
+    "request": "What products have low inventory levels?",
+    "expected_sources": ["inventory"],
+    "expected_suggestions": true,
+    "complexity": "simple"
+  },
+  {
+    "request": "Show me purchase patterns for high-value customers",
+    "expected_sources": ["customer_behavior"],
+    "expected_suggestions": true,
+    "complexity": "simple"
+  },
+  {
+    "request": "Are there inventory constraints affecting customer purchases?",
+    "expected_sources": ["customer_behavior", "inventory"],
+    "expected_suggestions": true,
+    "complexity": "complex"
+  },
+  {
+    "request": "What is the current inventory turnover rate?",
+    "expected_sources": ["inventory"],
+    "expected_suggestions": true,
+    "complexity": "simple"
+  },
+  {
+    "request": "Identify products with high cart abandonment and low inventory",
+    "expected_sources": ["customer_behavior", "inventory"],
+    "expected_suggestions": true,
+    "complexity": "complex"
+  }
+]

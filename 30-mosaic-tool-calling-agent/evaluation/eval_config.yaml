@@ -1,0 +1,27 @@
+metrics:
+  - name: relevance
+    type: llm_judge
+    model: databricks-meta-llama-3-1-70b-instruct
+
+  - name: answer_correctness
+    type: llm_judge
+    model: databricks-meta-llama-3-1-70b-instruct
+
+  - name: source_citation
+    type: custom
+    function: check_sources_cited
+
+  - name: suggestions_provided
+    type: custom
+    function: check_suggestions_present
+
+  - name: response_time
+    type: custom
+    function: check_under_60_seconds
+
+thresholds:
+  relevance: 0.7
+  answer_correctness: 0.7
+  source_citation: 1.0  # Must always cite sources (FR-009)
+  suggestions_provided: 1.0  # Must always suggest (FR-013)
+  response_time: 1.0  # Must be under 60s (FR-012)

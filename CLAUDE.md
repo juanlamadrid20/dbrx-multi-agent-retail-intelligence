@@ -4,6 +4,8 @@ Auto-generated from all feature plans. Last updated: 2025-10-06
 
 ## Active Technologies
 - Python 3.11+ (Databricks Runtime compatible) + PySpark 3.5+, Delta Lake, Databricks SDK (001-i-want-to)
+- Python 3.12+ (Databricks Runtime compatible) + Anthropic SDK (Claude), Databricks SDK, Databricks Genie MCP tools, PySpark 3.5+ (002-multi-tool-calling)
+- Conversation history (in-memory or session storage), Delta Lake tables (via Genie/Unity Catalog) (002-multi-tool-calling)
 
 ## Project Structure
 ```
@@ -18,6 +20,7 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Python 3.11+ (Databricks Runtime compatible): Follow standard conventions
 
 ## Recent Changes
+- 002-multi-tool-calling: Added Python 3.12+ (Databricks Runtime compatible) + Anthropic SDK (Claude), Databricks SDK, Databricks Genie MCP tools, PySpark 3.5+
 - 001-i-want-to: Added Python 3.11+ (Databricks Runtime compatible) + PySpark 3.5+, Delta Lake, Databricks SDK
 
 <!-- MANUAL ADDITIONS START -->
