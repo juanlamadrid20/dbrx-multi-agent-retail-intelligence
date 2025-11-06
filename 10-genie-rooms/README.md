@@ -31,6 +31,23 @@ test_genie_space(space_id="...", query="...")
 
 ---
 
+## Configuration Artifacts
+
+### `genie-configs/customer-behavior/`
+Configuration artifacts for Customer Behavior Genie space.
+
+### `genie-configs/inventory-analytics/`
+Configuration artifacts for Inventory Analytics Genie space.
+
+**Contents**:
+- `instructions.md` - Genie space instructions
+- `sample_queries.md` - Sample queries organized by category
+- `data-model.md` - Reference data model documentation
+- `quickstart.md` - Configuration guide
+- `README.md` - Configuration documentation
+
+See `genie-configs/inventory-analytics/README.md` for details.
+
 ## Documentation
 
 ### `README.genie.customer-behavior.md`
