@@ -85,11 +85,15 @@ def get_config(
 
 
 def get_small_config() -> FashionRetailConfig:
-    """Get a smaller configuration for testing/development."""
+    """Get a smaller configuration for testing/development.
+    
+    Note: The locations parameter is fixed at 13 regardless of this value.
+    See dimension_generator.py for details.
+    """
     return FashionRetailConfig(
         customers=50_000,
         products=2_000,
-        locations=25,
+        locations=13,  # Fixed at 13 in implementation (10 stores, 2 warehouses, 1 DC)
         historical_days=90,
         events_per_day=100,
     )

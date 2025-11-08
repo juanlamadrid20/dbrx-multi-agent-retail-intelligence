@@ -101,23 +101,24 @@ This agent provides intelligent insights by:
    EOF
    ```
 
-3. Register Unity Catalog Functions:
+3. Create the agent (no UC Function registration needed):
    ```python
-   # Run notebook: notebooks/01-setup-agent.ipynb
-   # This will register UC Functions for Genie tools
+   # Run notebook: notebooks/02-create-agent.ipynb
+   # Uses GenieAgent from databricks-langchain (automatic authentication)
    ```
 
 ## Quick Start
 
 ### 1. Setup Agent
-Open and run `notebooks/01-setup-agent.ipynb` to:
-- Register UC Functions for Genie tools
-- Create agent with UCFunctionToolkit
+Open and run `notebooks/02-create-agent.ipynb` to:
+- Create multi-agent system with GenieAgent
 - Configure system prompt and conversation management
 - Log agent to MLflow
 
+**Note:** The previous UC Function registration approach is deprecated. The current implementation uses `GenieAgent` from `databricks-langchain` which handles authentication automatically. See `notebooks/README.tool-calling-agent.md` for details.
+
 ### 2. Test Agent
-Open `notebooks/02-test-agent.ipynb` for interactive testing:
+Open `notebooks/03-test-agent.ipynb` for interactive testing:
 
 ```python
 # Simple query
@@ -136,49 +137,49 @@ response1 = query_agent("What are the top cart abandonment products?", session_i
 response2 = query_agent("What about their demographics?", session_id)  # Uses context
 ```
 
-### 3. Evaluate Agent
-Open `notebooks/04-evaluate-agent.ipynb` to:
-- Run MLflow evaluation with test dataset
-- Validate functional requirements (FR-009, FR-012, FR-013, FR-015)
-- Check performance and quality metrics
-
-### 4. Deploy Agent
-Open `notebooks/03-deploy-agent.ipynb` to:
+### 3. Deploy Agent
+Open `notebooks/04-deploy-agent.ipynb` to:
 - Deploy agent to Databricks Model Serving
 - Test deployed endpoint
 - Monitor performance
 
 ## Notebook Execution Order
 
-1. **01-setup-agent.ipynb** - Agent definition and UC Function registration
-2. **02-test-agent.ipynb** - Interactive testing and validation
-3. **04-evaluate-agent.ipynb** - MLflow evaluation and metrics
-4. **03-deploy-agent.ipynb** - Model Serving deployment
+1. **02-create-agent.ipynb** - Create multi-agent system with GenieAgent
+2. **03-test-agent.ipynb** - Interactive testing and validation
+3. **04-deploy-agent.ipynb** - Model Serving deployment
 
-## Unity Catalog Function Registration
+**Note:** The previous `01-register-uc-functions.ipynb` notebook is deprecated. The current implementation uses `GenieAgent` from `databricks-langchain` which provides automatic authentication and doesn't require UC Function registration.
 
-UC Functions are the official Databricks pattern for custom agent tools:
+## Architecture
+
+The agent uses the **GenieAgent** pattern from `databricks-langchain`:
 
 ```python
-from unitycatalog.ai.core.databricks import DatabricksFunctionClient
+from databricks_langchain import GenieAgent
 
-client = DatabricksFunctionClient()
-
-# Register customer behavior tool
-from fashion_retail.agents.tools.customer_behavior import query_customer_behavior_genie
-customer_func = client.create_python_function(
-    func=query_customer_behavior_genie,
-    catalog="main",
-    schema="default",
-    replace=True
+# Create Genie agents for each domain
+customer_agent = GenieAgent(
+    genie_space_id=customer_behavior_space_id,
+    name="Customer Behavior Analyst"
 )
+
+inventory_agent = GenieAgent(
+    genie_space_id=inventory_space_id,
+    name="Inventory Analyst"
+)
+
+# Supervisor coordinates multiple agents
+supervisor = create_supervisor_agent([customer_agent, inventory_agent])
 ```
 
-**Key Requirements**:
-- Type hints on all parameters and returns
-- Google-style docstrings with Args, Returns, Examples
-- Imports inside function body (not at module level)
-- Error handling for graceful failures
+**Key Benefits**:
+- Automatic authentication (no manual token management)
+- No UC Function registration needed
+- Built-in error handling and retries
+- Native Genie Space integration
+
+See `notebooks/README.tool-calling-agent.md` for detailed architecture and troubleshooting.
 
 ## Functional Requirements
 
@@ -219,10 +220,10 @@ open htmlcov/index.html
 ```
 30-mosaic-tool-calling-agent/
 ├── notebooks/
-│   ├── 01-setup-agent.ipynb           # Agent definition and UC Functions
-│   ├── 02-test-agent.ipynb            # Interactive testing
-│   ├── 03-deploy-agent.ipynb          # Model Serving deployment
-│   └── 04-evaluate-agent.ipynb        # MLflow evaluation
+│   ├── 02-create-agent.ipynb          # Create multi-agent system with GenieAgent
+│   ├── 03-test-agent.ipynb             # Interactive testing and validation
+│   └── 04-deploy-agent.ipynb           # Model Serving deployment
+│   └── README.tool-calling-agent.md    # Detailed notebook documentation
 ├── src/
 │   ├── tools/
 │   │   ├── __init__.py

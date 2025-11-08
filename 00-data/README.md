@@ -348,7 +348,6 @@ erDiagram
     GOLD_LOCATION_DIM ||--o{ GOLD_STOCKOUT_EVENTS : location_key
 
     GOLD_CUSTOMER_DIM ||--o{ GOLD_CART_ABANDONMENT_FACT : customer_key
-    GOLD_PRODUCT_DIM ||--o{ GOLD_CART_ABANDONMENT_FACT : product_key
     GOLD_DATE_DIM ||--o{ GOLD_CART_ABANDONMENT_FACT : date_key
 ```
 
@@ -1089,6 +1088,7 @@ GROUP BY statement_type;
 
 ---
 
-**Last Updated:** 2025-11-02  
+**Last Updated:** 2025-01-27  
 **Status:** ✅ Production Ready  
+**Note:** Schema ERD diagrams have been reviewed and corrected to match actual table structures. See `REVIEW_REPORT.md` for detailed validation results.  
 **License:** Demonstration project for synthetic data generation. Use at your own discretion.
