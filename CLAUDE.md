@@ -1,6 +1,6 @@
 # dbrx-multi-agent-retail-intelligence Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2025-10-06
+Auto-generated from all feature plans. Last updated: 2025-01-27
 
 ## Active Technologies
 - Python 3.11+ (Databricks Runtime compatible) + PySpark 3.5+, Delta Lake, Databricks SDK (001-i-want-to)
@@ -14,7 +14,11 @@ tests/
 ```
 
 ## Commands
-cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] pytest [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] ruff check .
+```bash
+cd src
+pytest
+ruff check .
+```
 
 ## Code Style
 Python 3.11+ (Databricks Runtime compatible): Follow standard conventions
