@@ -47,7 +47,6 @@ A customer behavior analyst would ask questions that help uncover patterns, tren
 ### Example Questions
 
 - What products are trending?
-- Which products or categories are at risk of stockout or overstock?
 - Through which channels do customers prefer to shop?
 - Which segments respond best to personalization?
 
