@@ -8,7 +8,7 @@ resources:
       tasks:
         - task_key: generate_data
           notebook_task:
-            notebook_path: ./00-data/fashion_retail_notebook.py
+            notebook_path: ./00-data/00-fashion-retail-data.ipynb
             source: WORKSPACE
           timeout_seconds: 3600
       email_notifications:
@@ -20,7 +20,7 @@ resources:
       tasks:
         - task_key: cleanup_tables
           notebook_task:
-            notebook_path: ./00-data/util_notebook.py
+            notebook_path: ./00-data/10-cleanup-notebook.py 
             source: WORKSPACE
           timeout_seconds: 1800  # 30 minutes should be enough for cleanup
       email_notifications:

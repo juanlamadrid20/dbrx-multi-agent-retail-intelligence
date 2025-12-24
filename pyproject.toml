@@ -1,7 +1,16 @@
 [project]
 name = "dbrx-multi-agent-retail-intelligence"
 version = "0.1.0"
-description = "Add your description here"
+description = "Multi-agent retail intelligence system with Databricks"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
+
+[project.optional-dependencies]
+data-gen = [
+    "faker>=19.0.0",  # For realistic customer name generation
+]
+dev = [
+    "faker>=19.0.0",
+    "pytest>=7.0.0",
+]

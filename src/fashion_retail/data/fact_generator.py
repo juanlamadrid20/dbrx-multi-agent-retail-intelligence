@@ -48,17 +48,18 @@ class FactGenerator:
             WHERE is_current = true
         """).collect()
         
-        # Load product keys
+        # Load product keys (including unit_cost for accurate margin calculation)
         self.product_keys = self.spark.sql(f"""
             SELECT product_key, product_id, category_level_1, category_level_2, 
-                   base_price, season_code, brand
+                   base_price, unit_cost, season_code, brand
             FROM {self.catalog}.{self.schema}.gold_product_dim
             WHERE is_active = true
         """).collect()
         
-        # Load location keys
+        # Load location keys (including state_tax_rate for accurate tax calculation)
         self.location_keys = self.spark.sql(f"""
-            SELECT location_key, location_id, location_type
+            SELECT location_key, location_id, location_type, 
+                   COALESCE(state_tax_rate, 0.07) as state_tax_rate
             FROM {self.catalog}.{self.schema}.gold_location_dim
             WHERE is_active = true
         """).collect()
@@ -127,6 +128,7 @@ class FactGenerator:
         sales_data = []
         transaction_id = 1
         line_item_id = 1
+        is_first_batch = True  # Track first batch for overwrite vs append
         
         # Calculate daily transaction volume
         total_days = len(self.date_keys)
@@ -248,12 +250,17 @@ class FactGenerator:
 
                     # Calculate amounts based on ALLOCATED quantity
                     net_sales = float(int((unit_price - discount_amount) * quantity_sold * 100)) / 100
-                    tax_amount = float(int(net_sales * 0.08 * 100)) / 100  # 8% tax
-                    gross_margin = float(int(net_sales * random.uniform(0.4, 0.6) * 100)) / 100
+                    # Use location-specific tax rate instead of hardcoded 8%
+                    location_tax_rate = float(location.get('state_tax_rate', 0.07) if hasattr(location, 'get') else location['state_tax_rate'])
+                    tax_amount = float(int(net_sales * location_tax_rate * 100)) / 100
+                    # Calculate gross margin from actual unit_cost instead of random percentage
+                    product_unit_cost = float(product['unit_cost']) if product['unit_cost'] else float(base_price) * 0.4
+                    gross_margin = float(int((net_sales - (quantity_sold * product_unit_cost)) * 100)) / 100
 
                     # Return probability (influenced by customer segment and channel)
+                    # Fashion e-commerce typically has 25-40% return rates vs 8-10% in-store
                     base_return_rate = return_probability
-                    channel_multiplier = 1.2 if channel['is_digital'] else 0.8  # Digital has higher returns
+                    channel_multiplier = 2.5 if channel['is_digital'] else 0.8  # Digital has significantly higher returns
                     is_return = random.random() < (base_return_rate * channel_multiplier)
 
                     # Calculate return restocking date (1-3 days after return)
@@ -314,12 +321,13 @@ class FactGenerator:
                 
                 # Batch write every 100K records
                 if len(sales_data) >= 100000:
-                    self._write_batch(sales_data, 'gold_sales_fact', mode='append' if transaction_id > 100001 else 'overwrite')
+                    self._write_batch(sales_data, 'gold_sales_fact', mode='overwrite' if is_first_batch else 'append')
+                    is_first_batch = False
                     sales_data = []
         
         # Write remaining records
         if sales_data:
-            self._write_batch(sales_data, 'gold_sales_fact', mode='append' if transaction_id > 100001 else 'overwrite')
+            self._write_batch(sales_data, 'gold_sales_fact', mode='overwrite' if is_first_batch else 'append')
         
         # Add table properties
         self.spark.sql(f"""

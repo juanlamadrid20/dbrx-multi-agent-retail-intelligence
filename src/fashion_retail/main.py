@@ -351,40 +351,137 @@ class FashionRetailDataGenerator:
         
         logger.info("Sample queries generated - see sample_queries table")
     
-    def run(self):
-        """Execute the complete data generation pipeline"""
+    def _init_checkpoint_table(self):
+        """Initialize the checkpoint tracking table."""
+        self.spark.sql(f"""
+            CREATE TABLE IF NOT EXISTS {self.catalog}.{self.schema}._pipeline_checkpoints (
+                stage STRING,
+                status STRING,
+                started_at TIMESTAMP,
+                completed_at TIMESTAMP,
+                duration_seconds DOUBLE,
+                error_message STRING
+            ) USING DELTA
+        """)
+    
+    def _mark_stage_start(self, stage_name: str):
+        """Mark the start of a pipeline stage."""
+        try:
+            self.spark.sql(f"""
+                INSERT INTO {self.catalog}.{self.schema}._pipeline_checkpoints 
+                VALUES ('{stage_name}', 'in_progress', current_timestamp(), NULL, NULL, NULL)
+            """)
+        except Exception as e:
+            logger.warning(f"Could not record stage start for {stage_name}: {e}")
+    
+    def _mark_stage_complete(self, stage_name: str, start_time: float):
+        """Mark the completion of a pipeline stage."""
+        duration = time.time() - start_time
+        try:
+            self.spark.sql(f"""
+                UPDATE {self.catalog}.{self.schema}._pipeline_checkpoints 
+                SET status = 'completed', 
+                    completed_at = current_timestamp(),
+                    duration_seconds = {duration}
+                WHERE stage = '{stage_name}' AND status = 'in_progress'
+            """)
+        except Exception as e:
+            logger.warning(f"Could not record stage completion for {stage_name}: {e}")
+    
+    def _mark_stage_failed(self, stage_name: str, error: str):
+        """Mark a pipeline stage as failed."""
+        # Escape single quotes in error message
+        safe_error = error.replace("'", "''")[:500]  # Limit error message length
+        try:
+            self.spark.sql(f"""
+                UPDATE {self.catalog}.{self.schema}._pipeline_checkpoints 
+                SET status = 'failed', 
+                    completed_at = current_timestamp(),
+                    error_message = '{safe_error}'
+                WHERE stage = '{stage_name}' AND status = 'in_progress'
+            """)
+        except Exception as e:
+            logger.warning(f"Could not record stage failure for {stage_name}: {e}")
+    
+    def _is_stage_complete(self, stage_name: str) -> bool:
+        """Check if a stage has already been completed successfully."""
+        try:
+            result = self.spark.sql(f"""
+                SELECT COUNT(*) as cnt FROM {self.catalog}.{self.schema}._pipeline_checkpoints 
+                WHERE stage = '{stage_name}' AND status = 'completed'
+            """).collect()
+            return result[0]['cnt'] > 0
+        except Exception:
+            return False
+    
+    def run(self, progress_callback=None, resume_from_checkpoint: bool = False):
+        """Execute the complete data generation pipeline.
+        
+        Args:
+            progress_callback: Optional callback function(stage_name, progress_pct) for progress updates
+            resume_from_checkpoint: If True, skip stages that are already marked complete
+        """
         start_time = time.time()
         logger.info("="*60)
         logger.info("Starting Fashion Retail Data Generation Pipeline")
         logger.info(f"Configuration: {self.config}")
+        logger.info(f"Resume from checkpoint: {resume_from_checkpoint}")
         logger.info("="*60)
         
+        # Define pipeline stages with their progress percentages
+        stages = [
+            ('setup_catalog', self.setup_catalog, 5),
+            ('drop_tables', self.drop_existing_tables, 10),
+            ('dimensions', self.create_dimensions, 30),
+            ('facts', self.create_facts, 70),
+            ('aggregates', self.create_bridge_aggregates, 85),
+            ('optimize', self.optimize_tables, 90),
+            ('enable_cdc', self.enable_cdc, 93),
+            ('validate', self.validate_data, 97),
+            ('sample_queries', self.generate_sample_queries, 100),
+        ]
+        
         try:
-            # Setup
-            self.setup_catalog()
-            self.drop_existing_tables()
+            # Initialize checkpoint table
+            self.setup_catalog()  # Need catalog first
+            self._init_checkpoint_table()
             
-            # Create tables and generate data
-            self.create_dimensions()
-            self.create_facts()
-            self.create_bridge_aggregates()
-            
-            # Optimize and enable features
-            self.optimize_tables()
-            self.enable_cdc()
-            
-            # Validate
-            self.validate_data()
-            self.generate_sample_queries()
+            for stage_name, stage_func, progress_pct in stages:
+                # Skip completed stages if resuming
+                if resume_from_checkpoint and self._is_stage_complete(stage_name):
+                    logger.info(f"⏭️  Skipping completed stage: {stage_name}")
+                    if progress_callback:
+                        progress_callback(stage_name, progress_pct / 100.0)
+                    continue
+                
+                stage_start = time.time()
+                logger.info(f"▶️  Starting stage: {stage_name} ({progress_pct}%)")
+                
+                self._mark_stage_start(stage_name)
+                
+                if progress_callback:
+                    progress_callback(stage_name, progress_pct / 100.0)
+                
+                try:
+                    stage_func()
+                    self._mark_stage_complete(stage_name, stage_start)
+                    stage_duration = time.time() - stage_start
+                    logger.info(f"✅ Completed stage: {stage_name} in {stage_duration:.2f}s")
+                except Exception as e:
+                    self._mark_stage_failed(stage_name, str(e))
+                    logger.error(f"❌ Failed stage: {stage_name} - {str(e)}")
+                    raise
             
             elapsed_time = time.time() - start_time
             logger.info("="*60)
-            logger.info(f"Pipeline completed successfully in {elapsed_time:.2f} seconds")
-            logger.info(f"Data available in: {self.catalog}.{self.schema}")
+            logger.info(f"✅ Pipeline completed successfully in {elapsed_time:.2f} seconds")
+            logger.info(f"📍 Data available in: {self.catalog}.{self.schema}")
             logger.info("="*60)
             
         except Exception as e:
-            logger.error(f"Pipeline failed: {str(e)}")
+            elapsed_time = time.time() - start_time
+            logger.error(f"❌ Pipeline failed after {elapsed_time:.2f} seconds: {str(e)}")
+            logger.info("💡 Tip: Run with resume_from_checkpoint=True to continue from last successful stage")
             raise
 
 

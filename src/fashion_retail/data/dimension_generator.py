@@ -10,6 +10,13 @@ from datetime import datetime, timedelta
 import random
 import logging
 
+# Try to import Faker for realistic names, fall back gracefully if not installed
+try:
+    from faker import Faker
+    FAKER_AVAILABLE = True
+except ImportError:
+    FAKER_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 class DimensionGenerator:
@@ -22,7 +29,17 @@ class DimensionGenerator:
         self.schema = config['schema']
         
         # Set seed for reproducibility
-        random.seed(42)
+        random_seed = config.get('random_seed', 42)
+        random.seed(random_seed)
+        
+        # Initialize Faker with seed for reproducible realistic names
+        if FAKER_AVAILABLE:
+            self.fake = Faker()
+            Faker.seed(random_seed)
+            logger.info("Faker library available - using realistic customer names")
+        else:
+            self.fake = None
+            logger.warning("Faker library not installed - using generated names. Install with: pip install faker")
         
     def create_customer_dimension(self):
         """Create and populate customer dimension with SCD Type 2"""
@@ -142,12 +159,24 @@ class DimensionGenerator:
                 geo_region = random.choice(segment_config['geo_regions'])
                 geo_city = random.choice(geo_data[geo_region])
 
+                # Generate realistic names using Faker if available, otherwise use fallback
+                if self.fake:
+                    first_name = self.fake.first_name()
+                    last_name = self.fake.last_name()
+                    # Generate email based on name with some variation
+                    email_domain = random.choice(['gmail.com', 'yahoo.com', 'outlook.com', 'icloud.com', 'hotmail.com'])
+                    email = f"{first_name.lower()}.{last_name.lower()}{random.randint(1, 999)}@{email_domain}"
+                else:
+                    first_name = f"First{i+1}"
+                    last_name = f"Last{i+1}"
+                    email = f"customer_{i+1}@test.com"
+
                 customer = {
                     'customer_key': i + 1,
                     'customer_id': f"CUST_{i+1:08d}",
-                    'email': f"customer_{i+1}@test.com",
-                    'first_name': f"First{i+1}",
-                    'last_name': f"Last{i+1}",
+                    'email': email,
+                    'first_name': first_name,
+                    'last_name': last_name,
                     'segment': segment,
                     'lifetime_value': float(int(random.uniform(*segment_config['lifetime_value_range']) * 100)) / 100,
                     'acquisition_date': acquisition_date.date(),
@@ -170,7 +199,9 @@ class DimensionGenerator:
                 }
                 customers_data.append(customer)
 
-                logger.info(f"Generated customer {i+1}")
+                # Log progress at intervals to avoid log spam
+                if (i + 1) % 10000 == 0 or (i + 1) == num_customers:
+                    logger.info(f"Generated {i+1:,}/{num_customers:,} customers ({(i+1)/num_customers*100:.1f}%)")
 
         except Exception as e:
             logger.error(f"Error generating customer data: {str(e)}")
@@ -447,8 +478,24 @@ class DimensionGenerator:
              'region': 'Midwest', 'country': 'USA', 'selling_sqft': 0.0, 'total_sqft': 100000.0}
         ]
         
+        # State-level sales tax rates (approximate averages including local taxes)
+        state_tax_rates = {
+            'NY': 0.08875,  # New York (8.875% NYC)
+            'CA': 0.0725,   # California (7.25% state average)
+            'IL': 0.0825,   # Illinois (8.25% Chicago)
+            'FL': 0.06,     # Florida (6% no state income tax)
+            'TX': 0.0625,   # Texas (6.25% no state income tax)
+            'NV': 0.0685,   # Nevada (6.85%)
+            'MA': 0.0625,   # Massachusetts (6.25%)
+            'WA': 0.065,    # Washington (6.5%)
+            'GA': 0.04,     # Georgia (4% state)
+            'NJ': 0.06625,  # New Jersey (6.625%)
+            'OH': 0.0575,   # Ohio (5.75%)
+        }
+        
         # Enrich location data
         for i, loc in enumerate(locations_data):
+            state = loc['state_province']
             loc.update({
                 'location_key': int(i + 1),
                 'channel': 'physical' if loc['location_type'] == 'store' else 'digital',
@@ -464,6 +511,7 @@ class DimensionGenerator:
                            'America/Chicago' if loc['region'] == 'Midwest' else
                            'America/Denver' if loc['region'] == 'Southwest' else
                            'America/Los_Angeles',
+                'state_tax_rate': state_tax_rates.get(state, 0.07),  # Default 7% if state not found
                 'source_system': 'STORE_OPS_WMS',
                 'etl_timestamp': datetime.now()
             })
@@ -490,6 +538,7 @@ class DimensionGenerator:
             StructField("close_date", DateType(), True),
             StructField("is_active", BooleanType(), True),
             StructField("timezone", StringType(), True),
+            StructField("state_tax_rate", DoubleType(), True),
             StructField("source_system", StringType(), True),
             StructField("etl_timestamp", TimestampType(), True)
         ])

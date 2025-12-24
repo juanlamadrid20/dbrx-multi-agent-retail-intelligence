@@ -38,6 +38,42 @@ class FashionRetailConfig:
     return_delay_days: Tuple[int, int] = (1, 3)  # Returns replenish inventory 1-3 days later
     low_inventory_threshold: int = 5  # Trigger cart abandonment increase when qty < 5
 
+    def __post_init__(self):
+        """Validate configuration parameters after initialization."""
+        # Validate scale parameters
+        if self.customers <= 0:
+            raise ValueError(f"customers must be positive, got {self.customers}")
+        if self.products <= 0:
+            raise ValueError(f"products must be positive, got {self.products}")
+        if self.locations <= 0:
+            raise ValueError(f"locations must be positive, got {self.locations}")
+        if self.historical_days <= 0:
+            raise ValueError(f"historical_days must be positive, got {self.historical_days}")
+        if self.events_per_day < 0:
+            raise ValueError(f"events_per_day must be non-negative, got {self.events_per_day}")
+        
+        # Validate inventory alignment parameters
+        if not 0 < self.target_stockout_rate < 1:
+            raise ValueError(f"target_stockout_rate must be between 0 and 1, got {self.target_stockout_rate}")
+        if not 0 <= self.cart_abandonment_increase < 1:
+            raise ValueError(f"cart_abandonment_increase must be between 0 and 1, got {self.cart_abandonment_increase}")
+        if self.low_inventory_threshold < 0:
+            raise ValueError(f"low_inventory_threshold must be non-negative, got {self.low_inventory_threshold}")
+        
+        # Validate return_delay_days tuple
+        if len(self.return_delay_days) != 2:
+            raise ValueError(f"return_delay_days must be a tuple of 2 integers, got {self.return_delay_days}")
+        if self.return_delay_days[0] < 0 or self.return_delay_days[1] < 0:
+            raise ValueError(f"return_delay_days values must be non-negative, got {self.return_delay_days}")
+        if self.return_delay_days[0] > self.return_delay_days[1]:
+            raise ValueError(f"return_delay_days[0] must be <= return_delay_days[1], got {self.return_delay_days}")
+        
+        # Validate catalog and schema names (basic validation)
+        if not self.catalog or not self.catalog.strip():
+            raise ValueError("catalog name cannot be empty")
+        if not self.schema or not self.schema.strip():
+            raise ValueError("schema name cannot be empty")
+
     @property
     def full_schema_name(self) -> str:
         """Full schema name for table references."""
