@@ -182,16 +182,32 @@ class FashionRetailDataGenerator:
             except Exception as e:
                 logger.warning(f"Could not optimize {table}: {str(e)}")
         
-        # Compute statistics
-        tables = self.spark.sql(f"""
-            SHOW TABLES IN {self.catalog}.{self.schema}
-            LIKE 'gold_*'
-        """).collect()
+        # Compute statistics - only for Delta tables we created
+        # Using explicit list to avoid issues with unsupported table types
+        tables_to_analyze = [
+            'gold_customer_dim',
+            'gold_product_dim',
+            'gold_location_dim',
+            'gold_date_dim',
+            'gold_channel_dim',
+            'gold_time_dim',
+            'gold_sales_fact',
+            'gold_inventory_fact',
+            'gold_customer_event_fact',
+            'gold_cart_abandonment_fact',
+            'gold_demand_forecast_fact',
+            'gold_stockout_events',
+            'gold_customer_product_affinity_agg',
+            'gold_size_fit_bridge',
+            'gold_inventory_movement_fact'
+        ]
         
-        for row in tables:
-            table_name = row['tableName']
-            self.spark.sql(f"ANALYZE TABLE {self.catalog}.{self.schema}.{table_name} COMPUTE STATISTICS")
-            logger.info(f"Statistics computed for {table_name}")
+        for table_name in tables_to_analyze:
+            try:
+                self.spark.sql(f"ANALYZE TABLE {self.catalog}.{self.schema}.{table_name} COMPUTE STATISTICS")
+                logger.info(f"Statistics computed for {table_name}")
+            except Exception as e:
+                logger.warning(f"Could not compute statistics for {table_name}: {str(e)}")
     
     def enable_cdc(self):
         """Enable Change Data Capture on specified tables"""

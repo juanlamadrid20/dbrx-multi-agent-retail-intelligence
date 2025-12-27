@@ -1,0 +1,80 @@
+# =============================================================================
+# Fashion Retail Data Generation Configuration
+# =============================================================================
+#
+# This file controls the data generation pipeline for the Fashion Retail
+# analytics demo. The system always reads from config.yaml at the project root.
+#
+# USAGE:
+#   - Edit this file directly for your needs
+#   - Or copy a preset: cp config.small.yaml config.yaml
+#   - Or create your own: cp config.yaml config.mytest.yaml (then swap back)
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Environment Configuration
+# -----------------------------------------------------------------------------
+# Unity Catalog location for generated tables
+
+catalog: juan_dev          # Unity Catalog name
+schema: retail             # Schema within the catalog
+force_recreate: true       # If true, drop and recreate all tables on each run
+
+# -----------------------------------------------------------------------------
+# Scale Parameters
+# -----------------------------------------------------------------------------
+# Control the size of generated data. Larger values = longer generation time.
+
+customers: 100000          # Number of unique customers to generate
+products: 10000            # Number of unique products in catalog
+locations: 13              # Number of locations (fixed: 10 stores + 2 warehouses + 1 DC)
+historical_days: 730       # Days of historical data to generate (730 = 2 years)
+events_per_day: 500000     # Customer events (views, cart adds, etc.) per day
+
+# -----------------------------------------------------------------------------
+# Feature Flags
+# -----------------------------------------------------------------------------
+# Enable/disable specific Databricks features
+
+enable_cdc: true                  # Enable Change Data Capture on tables
+enable_liquid_clustering: true    # Enable Liquid Clustering for optimization
+
+# -----------------------------------------------------------------------------
+# Table Optimization
+# -----------------------------------------------------------------------------
+# Z-ORDER keys for each table to optimize query performance
+
+z_order_keys:
+  gold_sales_fact:
+    - date_key
+    - product_key
+  gold_inventory_fact:
+    - product_key
+    - location_key
+  gold_customer_event_fact:
+    - date_key
+    - customer_key
+
+# -----------------------------------------------------------------------------
+# Inventory Alignment Parameters
+# -----------------------------------------------------------------------------
+# These parameters control the realistic inventory behavior and correlations
+# between sales, inventory levels, and customer behavior.
+
+random_seed: 42                   # Seed for reproducible data generation
+
+target_stockout_rate: 0.075       # Target stockout rate (7.5% = midpoint of 5-10%)
+                                  # Valid range: 0.0 to 1.0
+
+cart_abandonment_increase: 0.10   # Additional cart abandonment rate when inventory is low
+                                  # Added to base rate when qty < low_inventory_threshold
+                                  # Valid range: 0.0 to 1.0
+
+low_inventory_threshold: 5        # Quantity threshold that triggers increased abandonment
+                                  # When inventory drops below this, abandonment increases
+
+return_delay_days:                # Range of days for returns to replenish inventory
+  min: 1                          # Minimum days before return restocks inventory
+  max: 3                          # Maximum days before return restocks inventory
+

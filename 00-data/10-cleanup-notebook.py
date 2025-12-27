@@ -32,7 +32,7 @@ sys.path.append('../src')
 
 # Import the cleanup utilities and configuration
 from fashion_retail.cleanup import TableCleanup
-from fashion_retail.config import get_config, get_small_config
+from fashion_retail.config import load_config
 
 print("✅ Fashion Retail cleanup utilities imported successfully!")
 
@@ -43,12 +43,13 @@ print("✅ Fashion Retail cleanup utilities imported successfully!")
 
 # COMMAND ----------
 
-# Choose your configuration - this determines which schema to operate on
-config = get_config()  # Default: juan_dev.retail
+# Load configuration from config.yaml at project root
+# Edit config.yaml directly, or swap in a preset: cp config.small.yaml config.yaml
+config = load_config()
 
-# Alternative configurations:
-# config = get_small_config()  # For testing environments
-# config = get_config(catalog="your_catalog", schema="your_schema")  # Custom
+# Alternative: Load from a specific file or override values
+# config = load_config("config.small.yaml")
+# config = load_config(catalog="your_catalog", schema="your_schema")
 
 print(f"🎯 Target Schema: {config.catalog}.{config.schema}")
 print(f"📊 Configuration: {config.customers:,} customers, {config.products:,} products")

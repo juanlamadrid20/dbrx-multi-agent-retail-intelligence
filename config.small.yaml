@@ -1,0 +1,64 @@
+# =============================================================================
+# Fashion Retail - Small/Development Configuration
+# =============================================================================
+#
+# A reduced-scale configuration for development and testing.
+# Generates approximately 10-15 minutes of data vs 45-60 minutes for full scale.
+#
+# USAGE:
+#   cp config.small.yaml config.yaml
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Environment Configuration
+# -----------------------------------------------------------------------------
+
+catalog: juan_dev
+schema: retail
+force_recreate: true
+
+# -----------------------------------------------------------------------------
+# Scale Parameters (Reduced for Development)
+# -----------------------------------------------------------------------------
+
+customers: 50000           # 50K customers (vs 100K in full config)
+products: 2000             # 2K products (vs 10K in full config)
+locations: 13              # Fixed: 10 stores + 2 warehouses + 1 DC
+historical_days: 90        # 90 days / 3 months (vs 730 days / 2 years)
+events_per_day: 100        # 100 events/day (vs 500K in full config)
+
+# -----------------------------------------------------------------------------
+# Feature Flags
+# -----------------------------------------------------------------------------
+
+enable_cdc: true
+enable_liquid_clustering: true
+
+# -----------------------------------------------------------------------------
+# Table Optimization
+# -----------------------------------------------------------------------------
+
+z_order_keys:
+  gold_sales_fact:
+    - date_key
+    - product_key
+  gold_inventory_fact:
+    - product_key
+    - location_key
+  gold_customer_event_fact:
+    - date_key
+    - customer_key
+
+# -----------------------------------------------------------------------------
+# Inventory Alignment Parameters
+# -----------------------------------------------------------------------------
+
+random_seed: 42
+target_stockout_rate: 0.075
+cart_abandonment_increase: 0.10
+low_inventory_threshold: 5
+return_delay_days:
+  min: 1
+  max: 3
+
