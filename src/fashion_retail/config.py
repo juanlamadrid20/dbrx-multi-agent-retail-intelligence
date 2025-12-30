@@ -1,7 +1,12 @@
 """Configuration management for Fashion Retail data generation pipeline.
 
-This module provides configuration loading from YAML files and validation
-via the FashionRetailConfig dataclass.
+This module LOADS and VALIDATES configuration from YAML files.
+It does NOT define configuration values - those live in config.yaml.
+
+Configuration Architecture:
+  - config.yaml: User-configurable runtime settings (catalog, scale, features)
+  - constants.py: Static code constants (table lists, business logic)
+  - config.py: (this file) Loads YAML, validates, provides typed access
 
 Usage:
     from fashion_retail.config import load_config
@@ -17,12 +22,16 @@ Usage:
 """
 
 import os
+import re
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import yaml
+
+# Unity Catalog naming pattern: alphanumeric and underscores, must start with letter
+_UC_NAME_PATTERN = re.compile(r'^[a-zA-Z][a-zA-Z0-9_]*$')
 
 
 def _find_config_file(filename: str = "config.yaml") -> Path:
@@ -105,9 +114,49 @@ def _convert_return_delay_days(data: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
+def _validate_uc_name(name: str, name_type: str) -> None:
+    """Validate Unity Catalog naming conventions.
+    
+    Args:
+        name: The catalog or schema name to validate
+        name_type: "catalog" or "schema" for error messages
+        
+    Raises:
+        ValueError: If name doesn't match UC naming rules
+    """
+    if not name or not name.strip():
+        raise ValueError(f"{name_type} name cannot be empty")
+    
+    if not _UC_NAME_PATTERN.match(name):
+        raise ValueError(
+            f"{name_type} name '{name}' is invalid. "
+            f"Must start with a letter and contain only alphanumeric characters and underscores."
+        )
+
+
 @dataclass
 class FashionRetailConfig:
-    """Configuration for the Fashion Retail data generation pipeline."""
+    """Configuration for the Fashion Retail data generation pipeline.
+    
+    Attributes:
+        catalog: Unity Catalog name (alphanumeric and underscores only)
+        schema: Schema name within the catalog
+        force_recreate: If True, drop and recreate all tables on each run
+        customers: Number of unique customers to generate
+        products: Number of unique products in catalog
+        locations: Number of locations (fixed at 13 in current implementation)
+        historical_days: Days of historical data to generate
+        events_per_day: Customer events per day
+        batch_size: Records per batch for memory-efficient processing
+        enable_cdc: Enable Change Data Capture on tables
+        enable_liquid_clustering: Enable Liquid Clustering for optimization
+        z_order_keys: Z-ORDER keys for each table
+        random_seed: Seed for reproducible data generation
+        target_stockout_rate: Target stockout rate (0.0 to 1.0)
+        cart_abandonment_increase: Additional abandonment rate for low inventory
+        return_delay_days: Range of days for returns to replenish inventory
+        low_inventory_threshold: Quantity threshold for low inventory alerts
+    """
 
     # Environment configuration
     catalog: str = "juan_dev"
@@ -121,6 +170,9 @@ class FashionRetailConfig:
     historical_days: int = 730
     events_per_day: int = 500_000
 
+    # Performance parameters
+    batch_size: int = 10_000  # Records per batch for memory-efficient processing
+
     # Features
     enable_cdc: bool = True
     enable_liquid_clustering: bool = True
@@ -132,15 +184,19 @@ class FashionRetailConfig:
         'gold_customer_event_fact': ['date_key', 'customer_key']
     })
 
-    # Inventory alignment parameters (Feature: 001-i-want-to)
+    # Inventory alignment parameters
     random_seed: int = 42
-    target_stockout_rate: float = 0.075  # Target 7.5% stockout rate (midpoint of 5-10%)
+    target_stockout_rate: float = 0.075  # Target 7.5% stockout rate
     cart_abandonment_increase: float = 0.10  # +10 percentage points for low inventory
     return_delay_days: Tuple[int, int] = (1, 3)  # Returns replenish inventory 1-3 days later
     low_inventory_threshold: int = 5  # Trigger cart abandonment increase when qty < 5
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration parameters after initialization."""
+        # Validate Unity Catalog naming conventions
+        _validate_uc_name(self.catalog, "catalog")
+        _validate_uc_name(self.schema, "schema")
+        
         # Validate scale parameters
         if self.customers <= 0:
             raise ValueError(f"customers must be positive, got {self.customers}")
@@ -152,6 +208,16 @@ class FashionRetailConfig:
             raise ValueError(f"historical_days must be positive, got {self.historical_days}")
         if self.events_per_day < 0:
             raise ValueError(f"events_per_day must be non-negative, got {self.events_per_day}")
+        
+        # Validate batch_size
+        if self.batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {self.batch_size}")
+        if self.batch_size > 100_000:
+            warnings.warn(
+                f"batch_size of {self.batch_size:,} is very large and may cause memory issues. "
+                f"Consider using 10,000-50,000 for optimal performance.",
+                UserWarning
+            )
         
         # Validate inventory alignment parameters
         if not 0 < self.target_stockout_rate < 1:
@@ -168,19 +234,13 @@ class FashionRetailConfig:
             raise ValueError(f"return_delay_days values must be non-negative, got {self.return_delay_days}")
         if self.return_delay_days[0] > self.return_delay_days[1]:
             raise ValueError(f"return_delay_days[0] must be <= return_delay_days[1], got {self.return_delay_days}")
-        
-        # Validate catalog and schema names (basic validation)
-        if not self.catalog or not self.catalog.strip():
-            raise ValueError("catalog name cannot be empty")
-        if not self.schema or not self.schema.strip():
-            raise ValueError("schema name cannot be empty")
 
     @property
     def full_schema_name(self) -> str:
         """Full schema name for table references."""
         return f"{self.catalog}.{self.schema}"
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert config to dictionary for backward compatibility."""
         return {
             'catalog': self.catalog,
@@ -191,6 +251,7 @@ class FashionRetailConfig:
             'locations': self.locations,
             'historical_days': self.historical_days,
             'events_per_day': self.events_per_day,
+            'batch_size': self.batch_size,
             'enable_cdc': self.enable_cdc,
             'enable_liquid_clustering': self.enable_liquid_clustering,
             'z_order_keys': self.z_order_keys,

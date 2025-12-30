@@ -4,16 +4,30 @@ Creates and populates bridge tables and aggregates for advanced analytics
 """
 
 from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql.functions import *
-from pyspark.sql.types import *
+from pyspark.sql.functions import (
+    col, count, sum as spark_sum, avg as spark_avg, max as spark_max,
+    when, lit, round as spark_round, row_number, desc, current_date, current_timestamp
+)
+from pyspark.sql.types import (
+    StructType, StructField, IntegerType, StringType, DoubleType,
+    DateType, TimestampType, BooleanType
+)
+from pyspark.sql.window import Window
 from datetime import datetime, timedelta
 import random
 import logging
+from typing import Dict, List, Any
+
+from ..constants import SOURCE_SYSTEMS
 
 logger = logging.getLogger(__name__)
 
+
 class AggregateGenerator:
-    """Generate aggregate and bridge tables for fashion retail star schema"""
+    """Generate aggregate and bridge tables for fashion retail star schema.
+    
+    Uses instance-level random number generator for reproducibility.
+    """
     
     def __init__(self, spark: SparkSession, config: dict):
         self.spark = spark
@@ -21,11 +35,12 @@ class AggregateGenerator:
         self.catalog = config['catalog']
         self.schema = config['schema']
         
-        # Set seed for reproducibility
-        random.seed(42)
+        # Use instance-level random generator for reproducibility
+        random_seed = config.get('random_seed', 42)
+        self._rng = random.Random(random_seed)
     
-    def create_customer_product_affinity(self):
-        """Create customer-product affinity aggregate for personalization"""
+    def create_customer_product_affinity(self) -> None:
+        """Create customer-product affinity aggregate for personalization."""
         logger.info("Generating customer-product affinity aggregate...")
         
         # Calculate affinity scores from sales and event data
@@ -146,11 +161,10 @@ class AggregateGenerator:
         
         logger.info(f"Created customer-product affinity aggregate with {record_count:,} records")
     
-    def create_size_fit_bridge(self):
-        """Create size fit bridge table for size recommendations"""
+    def create_size_fit_bridge(self) -> None:
+        """Create size fit bridge table for size recommendations."""
         logger.info("Generating size fit bridge table...")
         
-        # Load necessary dimension data
         customers = self.spark.sql(f"""
             SELECT customer_key, size_profile_tops, size_profile_bottoms
             FROM {self.catalog}.{self.schema}.gold_customer_dim
@@ -166,66 +180,58 @@ class AggregateGenerator:
             LIMIT 500
         """).collect()
         
-        size_data = []
+        size_data: List[Dict[str, Any]] = []
         sizes_apparel = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
         fit_feedback = ['too_small', 'perfect', 'too_large']
-        fit_weights = [0.2, 0.65, 0.15]  # Most items fit well
+        fit_weights = [0.2, 0.65, 0.15]
         
-        # Generate size fit feedback data
-        for _ in range(5000):  # Generate 5000 feedback records
-            customer = random.choice(customers)
-            product = random.choice(products)
+        for _ in range(5000):
+            customer = self._rng.choice(customers)
+            product = self._rng.choice(products)
             
-            # Determine ordered size based on customer profile
             if product['category_level_2'] in ['tops', 'dresses', 'outerwear']:
                 customer_usual_size = customer['size_profile_tops']
             else:
-                # For bottoms, convert numeric to letter size
                 size_map = {'28': 'XS', '30': 'S', '32': 'M', '34': 'L', '36': 'XL'}
                 customer_usual_size = size_map.get(customer['size_profile_bottoms'], 'M')
             
-            # Sometimes customers order different sizes
-            if random.random() < 0.8:  # 80% order usual size
+            if self._rng.random() < 0.8:
                 ordered_size = customer_usual_size
-            else:  # 20% try different size
-                ordered_size = random.choice(sizes_apparel)
-            
-            # Determine fit outcome
-            if ordered_size == customer_usual_size:
-                fit = random.choices(fit_feedback, [0.1, 0.8, 0.1])[0]  # Usually perfect
             else:
-                fit = random.choices(fit_feedback, fit_weights)[0]
+                ordered_size = self._rng.choice(sizes_apparel)
             
-            # Determine if kept or returned
+            if ordered_size == customer_usual_size:
+                fit = self._rng.choices(fit_feedback, [0.1, 0.8, 0.1])[0]
+            else:
+                fit = self._rng.choices(fit_feedback, fit_weights)[0]
+            
             if fit == 'perfect':
-                is_returned = random.random() < 0.05  # 5% return even if perfect fit
+                is_returned = self._rng.random() < 0.05
                 kept_size = ordered_size
-                fit_score = random.choice([4, 5])
+                fit_score = self._rng.choice([4, 5])
             elif fit == 'too_small':
-                is_returned = random.random() < 0.7  # 70% return if too small
+                is_returned = self._rng.random() < 0.7
                 kept_size = None if is_returned else ordered_size
-                fit_score = random.choice([1, 2])
-            else:  # too_large
-                is_returned = random.random() < 0.6  # 60% return if too large
+                fit_score = self._rng.choice([1, 2])
+            else:
+                is_returned = self._rng.random() < 0.6
                 kept_size = None if is_returned else ordered_size
-                fit_score = random.choice([2, 3])
+                fit_score = self._rng.choice([2, 3])
             
-            # Generate return reasons
             if is_returned:
                 if fit == 'perfect':
-                    return_reason = random.choice(['changed_mind', 'found_better_price', 'quality_issue'])
+                    return_reason = self._rng.choice(['changed_mind', 'found_better_price', 'quality_issue'])
                 else:
                     return_reason = f'fit_issue_{fit}'
             else:
                 return_reason = None
             
-            # Recommended size (what ML model would suggest)
             if fit == 'too_small':
                 size_idx = sizes_apparel.index(ordered_size)
-                recommended_size = sizes_apparel[(len(sizes_apparel) - 1) if (size_idx + 1) > (len(sizes_apparel) - 1) else (size_idx + 1)]
+                recommended_size = sizes_apparel[min(size_idx + 1, len(sizes_apparel) - 1)]
             elif fit == 'too_large':
                 size_idx = sizes_apparel.index(ordered_size)
-                recommended_size = sizes_apparel[0 if (size_idx - 1) < 0 else (size_idx - 1)]
+                recommended_size = sizes_apparel[max(size_idx - 1, 0)]
             else:
                 recommended_size = ordered_size
             
@@ -239,10 +245,10 @@ class AggregateGenerator:
                 'fit_description': fit,
                 'is_returned': is_returned,
                 'return_reason': return_reason,
-                'customer_height_cm': random.randint(150, 195) if random.random() < 0.3 else None,
-                'customer_weight_kg': random.randint(45, 110) if random.random() < 0.3 else None,
-                'customer_body_type': random.choice(['athletic', 'average', 'curvy', 'petite', 'tall']) 
-                                      if random.random() < 0.2 else None,
+                'customer_height_cm': self._rng.randint(150, 195) if self._rng.random() < 0.3 else None,
+                'customer_weight_kg': self._rng.randint(45, 110) if self._rng.random() < 0.3 else None,
+                'customer_body_type': self._rng.choice(['athletic', 'average', 'curvy', 'petite', 'tall']) 
+                                      if self._rng.random() < 0.2 else None,
                 'source_system': 'RETURNS_FEEDBACK',
                 'etl_timestamp': datetime.now()
             }
@@ -264,11 +270,10 @@ class AggregateGenerator:
         
         logger.info(f"Created size fit bridge table with {len(size_data):,} records")
     
-    def create_inventory_movement_fact(self):
-        """Create inventory movement fact table"""
+    def create_inventory_movement_fact(self) -> None:
+        """Create inventory movement fact table."""
         logger.info("Generating inventory movement fact table...")
         
-        # Load dimension data
         products = self.spark.sql(f"""
             SELECT product_key, base_price
             FROM {self.catalog}.{self.schema}.gold_product_dim
@@ -291,62 +296,53 @@ class AggregateGenerator:
         """).collect()
         
         movement_types = ['receipt', 'sale', 'transfer', 'adjustment', 'return']
-        movement_data = []
+        movement_data: List[Dict[str, Any]] = []
         movement_id = 1
         
-        # Separate locations by type
         stores = [l for l in locations if l['location_type'] == 'store']
         warehouses = [l for l in locations if l['location_type'] in ['warehouse', 'dc']]
         
-        # Generate movements for last 30 days
         for date in dates:
-            daily_movements = random.randint(100, 300)
+            daily_movements = self._rng.randint(100, 300)
             
             for _ in range(daily_movements):
-                movement_type = random.choice(movement_types)
-                product = random.choice(products)
+                movement_type = self._rng.choice(movement_types)
+                product = self._rng.choice(products)
                 
-                # Determine from/to locations based on movement type
                 if movement_type == 'receipt':
-                    # Goods received at warehouse/DC
                     from_location = None
-                    to_location = random.choice(warehouses)
+                    to_location = self._rng.choice(warehouses)
                 elif movement_type == 'sale':
-                    # Sale from store
-                    from_location = random.choice(stores)
+                    from_location = self._rng.choice(stores)
                     to_location = None
                 elif movement_type == 'transfer':
-                    # Transfer between locations
-                    if random.random() < 0.7:  # 70% warehouse to store
-                        from_location = random.choice(warehouses)
-                        to_location = random.choice(stores)
-                    else:  # 30% store to store
-                        from_location = random.choice(stores)
-                        to_location = random.choice([s for s in stores if s != from_location])
+                    if self._rng.random() < 0.7:
+                        from_location = self._rng.choice(warehouses)
+                        to_location = self._rng.choice(stores)
+                    else:
+                        from_location = self._rng.choice(stores)
+                        to_location = self._rng.choice([s for s in stores if s != from_location])
                 elif movement_type == 'return':
-                    # Return to store or warehouse
                     from_location = None
-                    to_location = random.choice(stores + warehouses)
-                else:  # adjustment
-                    # Inventory adjustment at any location
-                    location = random.choice(locations)
+                    to_location = self._rng.choice(stores + warehouses)
+                else:
+                    location = self._rng.choice(locations)
                     from_location = location
                     to_location = location
                 
-                # Generate movement details
-                quantity = random.choices([1, 2, 5, 10, 20, 50, 100], 
+                quantity = self._rng.choices([1, 2, 5, 10, 20, 50, 100], 
                                         [0.3, 0.2, 0.2, 0.15, 0.1, 0.03, 0.02])[0]
                 unit_cost = float(product['base_price']) * 0.4
                 
                 movement_record = {
-                    'movement_id': f"MOV_{str(movement_id).zfill(10)}",
+                    'movement_id': f"MOV_{movement_id:010d}",
                     'product_key': product['product_key'],
                     'from_location_key': from_location['location_key'] if from_location else None,
                     'to_location_key': to_location['location_key'] if to_location else None,
                     'date_key': date['date_key'],
-                    'time_key': random.choice([900, 1200, 1500, 1800]),
+                    'time_key': self._rng.choice([900, 1200, 1500, 1800]),
                     'movement_type': movement_type,
-                    'movement_reason': f"{movement_type}_reason_{random.randint(1, 5)}",
+                    'movement_reason': f"{movement_type}_reason_{self._rng.randint(1, 5)}",
                     'quantity': quantity,
                     'unit_cost': float(int(unit_cost * 100)) / 100,
                     'total_cost': float(int((unit_cost * quantity) * 100)) / 100,

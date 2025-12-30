@@ -18,6 +18,15 @@ Design Decisions:
 - Stockout tracking with start/end dates
 - Support for batch processing (50K record batches)
 
+Thread Safety Note:
+    This class is NOT thread-safe. It maintains mutable state (self.positions,
+    self.pending_replenishments) that would require synchronization for concurrent
+    access. For synthetic data generation (single-threaded), this is acceptable.
+    For production use in multi-threaded environments, consider:
+    - Using a thread-safe dictionary (e.g., from concurrent.futures)
+    - Adding locks around state-modifying operations
+    - Using a database-backed implementation
+
 Requirements: FR-001 through FR-015 (inventory-aligned data generation)
 """
 
@@ -137,6 +146,10 @@ class InventoryManager:
     This class is the central coordinator for inventory-aligned data generation.
     It ensures that sales never exceed available inventory and tracks stockout
     periods for analytics.
+    
+    Thread Safety:
+        NOT thread-safe. Uses instance-level random generator and mutable state.
+        Create separate instances for parallel processing with different seeds.
 
     Usage:
         config = {'random_seed': 42, 'target_stockout_rate': 0.075, ...}
@@ -179,8 +192,9 @@ class InventoryManager:
         self.total_sales_processed = 0
         self.total_returns_processed = 0
 
-        # Set random seed
-        random.seed(self.random_seed)
+        # Use instance-level random generator for reproducibility
+        # This avoids affecting global random state
+        self._rng = random.Random(self.random_seed)
 
         logger.info(f"InventoryManager initialized with target_stockout_rate={self.target_stockout_rate}")
 
@@ -215,25 +229,24 @@ class InventoryManager:
                 # Distribute stockouts across all product-location combinations
                 should_be_low = stockout_positions_created < target_stockout_count
 
-                if should_be_low and random.random() < 0.3:  # 30% chance if under target
+                if should_be_low and self._rng.random() < 0.3:  # 30% chance if under target
                     # Initialize with low inventory (will stockout quickly)
-                    initial_qty = random.randint(0, 10)
+                    initial_qty = self._rng.randint(0, 10)
                     stockout_positions_created += 1
                 else:
                     # Initialize with normal inventory
                     # Higher for store locations, moderate for warehouses, lower for outlets
-                    # Access Row object attributes directly, not via .get()
                     try:
                         location_type = location['location_type']
                     except (KeyError, TypeError):
                         location_type = 'store'
 
                     if location_type == 'warehouse':
-                        initial_qty = random.randint(100, 500)
+                        initial_qty = self._rng.randint(100, 500)
                     elif location_type == 'store':
-                        initial_qty = random.randint(20, 100)
+                        initial_qty = self._rng.randint(20, 100)
                     else:  # outlet
-                        initial_qty = random.randint(10, 50)
+                        initial_qty = self._rng.randint(10, 50)
 
                 position = InventoryPosition(product_key, location_key, initial_qty)
                 self.positions[(product_key, location_key)] = position

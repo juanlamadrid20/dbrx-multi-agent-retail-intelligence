@@ -4,11 +4,15 @@ Creates and populates all dimension tables with realistic synthetic data
 """
 
 from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql.functions import *
-from pyspark.sql.types import *
+from pyspark.sql.functions import col, lit, current_timestamp
+from pyspark.sql.types import (
+    StructType, StructField, IntegerType, StringType, DoubleType,
+    DateType, TimestampType, BooleanType
+)
 from datetime import datetime, timedelta
 import random
 import logging
+from typing import Dict, List, Iterator, Any
 
 # Try to import Faker for realistic names, fall back gracefully if not installed
 try:
@@ -17,10 +21,17 @@ try:
 except ImportError:
     FAKER_AVAILABLE = False
 
+from ..constants import CUSTOMER_SEGMENTS, SOURCE_SYSTEMS
+
 logger = logging.getLogger(__name__)
 
+
 class DimensionGenerator:
-    """Generate dimension tables for fashion retail star schema"""
+    """Generate dimension tables for fashion retail star schema.
+    
+    Uses batch processing for memory-efficient generation of large datasets.
+    Each instance maintains its own random number generator for reproducibility.
+    """
     
     def __init__(self, spark: SparkSession, config: dict):
         self.spark = spark
@@ -28,9 +39,13 @@ class DimensionGenerator:
         self.catalog = config['catalog']
         self.schema = config['schema']
         
-        # Set seed for reproducibility
+        # Use instance-level random generator for reproducibility
+        # This avoids affecting global random state
         random_seed = config.get('random_seed', 42)
-        random.seed(random_seed)
+        self._rng = random.Random(random_seed)
+        
+        # Batch size for memory-efficient processing (default matches config.py)
+        self._batch_size = config.get('batch_size', 10_000)
         
         # Initialize Faker with seed for reproducible realistic names
         if FAKER_AVAILABLE:
@@ -41,174 +56,9 @@ class DimensionGenerator:
             self.fake = None
             logger.warning("Faker library not installed - using generated names. Install with: pip install faker")
         
-    def create_customer_dimension(self):
-        """Create and populate customer dimension with SCD Type 2"""
-        logger.info("Generating customer dimension...")
-
-        # Use configured number of customers
-        configured_customers = self.config['customers']
-        num_customers = configured_customers
-        
-        # Warn if generating large number of customers (performance consideration)
-        if num_customers > 100000:
-            logger.warning(f"Generating {num_customers:,} customers - this may take significant time and memory")
-        elif num_customers > 50000:
-            logger.info(f"Generating {num_customers:,} customers - this may take several minutes")
-        
-        logger.info(f"Generating {num_customers:,} customers...")
-
-        # Define customer segments with realistic distributions and characteristics
-        customer_segments = {
-            'vip': {
-                'probability': 0.05,  # 5% of customers
-                'lifetime_value_range': (5000, 25000),
-                'acquisition_channels': ['store', 'referral', 'social'],
-                'preferred_channels': ['store', 'web'],
-                'preferred_categories': ['outerwear', 'dresses', 'accessories'],
-                'loyalty_tiers': ['platinum', 'gold'],
-                'geo_regions': ['Northeast', 'West'],
-                'email_subscribe_rate': 0.95,
-                'sms_subscribe_rate': 0.80
-            },
-            'premium': {
-                'probability': 0.15,  # 15% of customers
-                'lifetime_value_range': (2000, 8000),
-                'acquisition_channels': ['web', 'store', 'social'],
-                'preferred_channels': ['web', 'app'],
-                'preferred_categories': ['dresses', 'outerwear', 'tops'],
-                'loyalty_tiers': ['gold', 'silver'],
-                'geo_regions': ['Northeast', 'West', 'Southeast'],
-                'email_subscribe_rate': 0.85,
-                'sms_subscribe_rate': 0.60
-            },
-            'loyal': {
-                'probability': 0.25,  # 25% of customers
-                'lifetime_value_range': (800, 3000),
-                'acquisition_channels': ['web', 'store', 'email'],
-                'preferred_channels': ['web', 'store'],
-                'preferred_categories': ['tops', 'bottoms', 'dresses'],
-                'loyalty_tiers': ['silver', 'bronze'],
-                'geo_regions': ['Northeast', 'West', 'Southeast', 'Midwest'],
-                'email_subscribe_rate': 0.70,
-                'sms_subscribe_rate': 0.40
-            },
-            'regular': {
-                'probability': 0.35,  # 35% of customers
-                'lifetime_value_range': (200, 1200),
-                'acquisition_channels': ['web', 'social', 'search'],
-                'preferred_channels': ['web', 'app'],
-                'preferred_categories': ['tops', 'bottoms', 'accessories'],
-                'loyalty_tiers': ['bronze', 'silver'],
-                'geo_regions': ['West', 'Southeast', 'Midwest', 'Southwest'],
-                'email_subscribe_rate': 0.50,
-                'sms_subscribe_rate': 0.25
-            },
-            'new': {
-                'probability': 0.20,  # 20% of customers
-                'lifetime_value_range': (50, 500),
-                'acquisition_channels': ['web', 'social', 'search', 'paid'],
-                'preferred_channels': ['web', 'app', 'social'],
-                'preferred_categories': ['tops', 'bottoms', 'accessories'],
-                'loyalty_tiers': ['bronze'],
-                'geo_regions': ['West', 'Southeast', 'Midwest', 'Southwest', 'Northeast'],
-                'email_subscribe_rate': 0.30,
-                'sms_subscribe_rate': 0.15
-            }
-        }
-
-        # Geographic regions with cities
-        geo_data = {
-            'Northeast': ['New York', 'Boston', 'Philadelphia', 'Washington DC'],
-            'West': ['Seattle', 'Los Angeles', 'San Francisco', 'Portland'],
-            'Southeast': ['Miami', 'Atlanta', 'Charlotte', 'Tampa'],
-            'Midwest': ['Chicago', 'Detroit', 'Cleveland', 'Milwaukee'],
-            'Southwest': ['Dallas', 'Houston', 'Phoenix', 'Austin']
-        }
-
-
-        # Size profiles
-        size_profiles = {
-            'tops': ['XS', 'S', 'M', 'L', 'XL', 'XXL'],
-            'bottoms': ['26', '28', '30', '32', '34', '36', '38', '40']
-        }
-
-        # Generate customer data with realistic distributions
-        customers_data = []
-        segment_assignments = []
-
-        # Pre-calculate segment assignments based on probabilities
-        for segment, config in customer_segments.items():
-            count = int(num_customers * config['probability'])
-            segment_assignments.extend([segment] * count)
-
-        # Fill remaining slots with 'regular' if needed
-        while len(segment_assignments) < num_customers:
-            segment_assignments.append('regular')
-
-        # Shuffle to randomize order
-        random.shuffle(segment_assignments)
-
-        try:
-            for i in range(num_customers):
-                # Get assigned segment
-                segment = segment_assignments[i]
-                segment_config = customer_segments[segment]
-
-                # Generate customer based on segment characteristics
-                acquisition_date = datetime(2023, 1, 1) - timedelta(days=random.randint(0, 730))
-                geo_region = random.choice(segment_config['geo_regions'])
-                geo_city = random.choice(geo_data[geo_region])
-
-                # Generate realistic names using Faker if available, otherwise use fallback
-                if self.fake:
-                    first_name = self.fake.first_name()
-                    last_name = self.fake.last_name()
-                    # Generate email based on name with some variation
-                    email_domain = random.choice(['gmail.com', 'yahoo.com', 'outlook.com', 'icloud.com', 'hotmail.com'])
-                    email = f"{first_name.lower()}.{last_name.lower()}{random.randint(1, 999)}@{email_domain}"
-                else:
-                    first_name = f"First{i+1}"
-                    last_name = f"Last{i+1}"
-                    email = f"customer_{i+1}@test.com"
-
-                customer = {
-                    'customer_key': i + 1,
-                    'customer_id': f"CUST_{i+1:08d}",
-                    'email': email,
-                    'first_name': first_name,
-                    'last_name': last_name,
-                    'segment': segment,
-                    'lifetime_value': float(int(random.uniform(*segment_config['lifetime_value_range']) * 100)) / 100,
-                    'acquisition_date': acquisition_date.date(),
-                    'acquisition_channel': random.choice(segment_config['acquisition_channels']),
-                    'preferred_channel': random.choice(segment_config['preferred_channels']),
-                    'preferred_category': random.choice(segment_config['preferred_categories']),
-                    'size_profile_tops': random.choice(size_profiles['tops']),
-                    'size_profile_bottoms': random.choice(size_profiles['bottoms']),
-                    'geo_region': geo_region,
-                    'geo_city': geo_city,
-                    'nearest_store_id': random.randint(1, 10),
-                    'loyalty_tier': random.choice(segment_config['loyalty_tiers']),
-                    'email_subscribe_flag': random.random() < segment_config['email_subscribe_rate'],
-                    'sms_subscribe_flag': random.random() < segment_config['sms_subscribe_rate'],
-                    'effective_date': datetime(2023, 1, 1).date(),
-                    'expiration_date': datetime(9999, 12, 31).date(),
-                    'is_current': True,
-                    'source_system': 'CRM_SALESFORCE',
-                    'etl_timestamp': datetime.now()
-                }
-                customers_data.append(customer)
-
-                # Log progress at intervals to avoid log spam
-                if (i + 1) % 10000 == 0 or (i + 1) == num_customers:
-                    logger.info(f"Generated {i+1:,}/{num_customers:,} customers ({(i+1)/num_customers*100:.1f}%)")
-
-        except Exception as e:
-            logger.error(f"Error generating customer data: {str(e)}")
-            raise
-        
-        # Define schema for customer dimension
-        customer_schema = StructType([
+    def _get_customer_schema(self) -> StructType:
+        """Return schema for customer dimension table."""
+        return StructType([
             StructField("customer_key", IntegerType(), False),
             StructField("customer_id", StringType(), False),
             StructField("email", StringType(), True),
@@ -235,16 +85,218 @@ class DimensionGenerator:
             StructField("etl_timestamp", TimestampType(), True)
         ])
 
-        # Create DataFrame with explicit schema
-        logger.info("Creating customer DataFrame...")
-        customer_df = self.spark.createDataFrame(customers_data, schema=customer_schema)
-        logger.info(f"DataFrame created successfully with {customer_df.count()} rows")
+    def _generate_customer_batch(
+        self,
+        start_idx: int,
+        batch_size: int,
+        segment_assignments: List[str],
+        customer_segments: Dict,
+        geo_data: Dict,
+        size_profiles: Dict
+    ) -> Iterator[Dict[str, Any]]:
+        """
+        Generate a batch of customers using a generator for memory efficiency.
         
-        # Write to Delta table (simplified for compatibility)
-        customer_df.write \
-            .mode("overwrite") \
-            .format("delta") \
-            .saveAsTable(f"{self.catalog}.{self.schema}.gold_customer_dim")
+        Args:
+            start_idx: Starting customer index
+            batch_size: Number of customers in this batch
+            segment_assignments: Pre-calculated segment for each customer
+            customer_segments: Segment configuration dictionary
+            geo_data: Geographic regions and cities
+            size_profiles: Size profile options
+            
+        Yields:
+            Customer dictionaries
+        """
+        end_idx = min(start_idx + batch_size, len(segment_assignments))
+        
+        for i in range(start_idx, end_idx):
+            segment = segment_assignments[i]
+            segment_config = customer_segments[segment]
+            
+            # Generate customer based on segment characteristics
+            acquisition_date = datetime(2023, 1, 1) - timedelta(days=self._rng.randint(0, 730))
+            geo_region = self._rng.choice(segment_config['geo_regions'])
+            geo_city = self._rng.choice(geo_data[geo_region])
+            
+            # Generate realistic names using Faker if available
+            if self.fake:
+                first_name = self.fake.first_name()
+                last_name = self.fake.last_name()
+                email_domain = self._rng.choice(['gmail.com', 'yahoo.com', 'outlook.com', 'icloud.com', 'hotmail.com'])
+                email = f"{first_name.lower()}.{last_name.lower()}{self._rng.randint(1, 999)}@{email_domain}"
+            else:
+                first_name = f"First{i+1}"
+                last_name = f"Last{i+1}"
+                email = f"customer_{i+1}@test.com"
+            
+            yield {
+                'customer_key': i + 1,
+                'customer_id': f"CUST_{i+1:08d}",
+                'email': email,
+                'first_name': first_name,
+                'last_name': last_name,
+                'segment': segment,
+                'lifetime_value': float(int(self._rng.uniform(*segment_config['lifetime_value_range']) * 100)) / 100,
+                'acquisition_date': acquisition_date.date(),
+                'acquisition_channel': self._rng.choice(segment_config['acquisition_channels']),
+                'preferred_channel': self._rng.choice(segment_config['preferred_channels']),
+                'preferred_category': self._rng.choice(segment_config['preferred_categories']),
+                'size_profile_tops': self._rng.choice(size_profiles['tops']),
+                'size_profile_bottoms': self._rng.choice(size_profiles['bottoms']),
+                'geo_region': geo_region,
+                'geo_city': geo_city,
+                'nearest_store_id': self._rng.randint(1, 10),
+                'loyalty_tier': self._rng.choice(segment_config['loyalty_tiers']),
+                'email_subscribe_flag': self._rng.random() < segment_config['email_subscribe_rate'],
+                'sms_subscribe_flag': self._rng.random() < segment_config['sms_subscribe_rate'],
+                'effective_date': datetime(2023, 1, 1).date(),
+                'expiration_date': datetime(9999, 12, 31).date(),
+                'is_current': True,
+                'source_system': SOURCE_SYSTEMS['customer'],
+                'etl_timestamp': datetime.now()
+            }
+
+    def create_customer_dimension(self) -> None:
+        """Create and populate customer dimension with SCD Type 2.
+        
+        Uses batch processing for memory-efficient generation of large datasets.
+        """
+        logger.info("Generating customer dimension...")
+
+        num_customers = self.config['customers']
+        
+        if num_customers > 100000:
+            logger.warning(f"Generating {num_customers:,} customers - this may take significant time")
+        elif num_customers > 50000:
+            logger.info(f"Generating {num_customers:,} customers - this may take several minutes")
+        
+        logger.info(f"Generating {num_customers:,} customers in batches of {self._batch_size:,}...")
+
+        # Customer segment configurations with realistic distributions
+        customer_segments = {
+            'vip': {
+                'probability': 0.05,
+                'lifetime_value_range': (5000, 25000),
+                'acquisition_channels': ['store', 'referral', 'social'],
+                'preferred_channels': ['store', 'web'],
+                'preferred_categories': ['outerwear', 'dresses', 'accessories'],
+                'loyalty_tiers': ['platinum', 'gold'],
+                'geo_regions': ['Northeast', 'West'],
+                'email_subscribe_rate': 0.95,
+                'sms_subscribe_rate': 0.80
+            },
+            'premium': {
+                'probability': 0.15,
+                'lifetime_value_range': (2000, 8000),
+                'acquisition_channels': ['web', 'store', 'social'],
+                'preferred_channels': ['web', 'app'],
+                'preferred_categories': ['dresses', 'outerwear', 'tops'],
+                'loyalty_tiers': ['gold', 'silver'],
+                'geo_regions': ['Northeast', 'West', 'Southeast'],
+                'email_subscribe_rate': 0.85,
+                'sms_subscribe_rate': 0.60
+            },
+            'loyal': {
+                'probability': 0.25,
+                'lifetime_value_range': (800, 3000),
+                'acquisition_channels': ['web', 'store', 'email'],
+                'preferred_channels': ['web', 'store'],
+                'preferred_categories': ['tops', 'bottoms', 'dresses'],
+                'loyalty_tiers': ['silver', 'bronze'],
+                'geo_regions': ['Northeast', 'West', 'Southeast', 'Midwest'],
+                'email_subscribe_rate': 0.70,
+                'sms_subscribe_rate': 0.40
+            },
+            'regular': {
+                'probability': 0.35,
+                'lifetime_value_range': (200, 1200),
+                'acquisition_channels': ['web', 'social', 'search'],
+                'preferred_channels': ['web', 'app'],
+                'preferred_categories': ['tops', 'bottoms', 'accessories'],
+                'loyalty_tiers': ['bronze', 'silver'],
+                'geo_regions': ['West', 'Southeast', 'Midwest', 'Southwest'],
+                'email_subscribe_rate': 0.50,
+                'sms_subscribe_rate': 0.25
+            },
+            'new': {
+                'probability': 0.20,
+                'lifetime_value_range': (50, 500),
+                'acquisition_channels': ['web', 'social', 'search', 'paid'],
+                'preferred_channels': ['web', 'app', 'social'],
+                'preferred_categories': ['tops', 'bottoms', 'accessories'],
+                'loyalty_tiers': ['bronze'],
+                'geo_regions': ['West', 'Southeast', 'Midwest', 'Southwest', 'Northeast'],
+                'email_subscribe_rate': 0.30,
+                'sms_subscribe_rate': 0.15
+            }
+        }
+
+        geo_data = {
+            'Northeast': ['New York', 'Boston', 'Philadelphia', 'Washington DC'],
+            'West': ['Seattle', 'Los Angeles', 'San Francisco', 'Portland'],
+            'Southeast': ['Miami', 'Atlanta', 'Charlotte', 'Tampa'],
+            'Midwest': ['Chicago', 'Detroit', 'Cleveland', 'Milwaukee'],
+            'Southwest': ['Dallas', 'Houston', 'Phoenix', 'Austin']
+        }
+
+        size_profiles = {
+            'tops': ['XS', 'S', 'M', 'L', 'XL', 'XXL'],
+            'bottoms': ['26', '28', '30', '32', '34', '36', '38', '40']
+        }
+
+        # Pre-calculate segment assignments based on probabilities
+        segment_assignments: List[str] = []
+        for segment, config in customer_segments.items():
+            count = int(num_customers * config['probability'])
+            segment_assignments.extend([segment] * count)
+
+        # Fill remaining slots with 'regular' if needed
+        while len(segment_assignments) < num_customers:
+            segment_assignments.append('regular')
+
+        # Shuffle using instance random for reproducibility
+        self._rng.shuffle(segment_assignments)
+
+        # Get schema once
+        customer_schema = self._get_customer_schema()
+        
+        # Process in batches for memory efficiency
+        is_first_batch = True
+        total_written = 0
+        
+        try:
+            for batch_start in range(0, num_customers, self._batch_size):
+                # Generate batch using generator (memory efficient)
+                batch_data = list(self._generate_customer_batch(
+                    batch_start,
+                    self._batch_size,
+                    segment_assignments,
+                    customer_segments,
+                    geo_data,
+                    size_profiles
+                ))
+                
+                # Create DataFrame from batch
+                batch_df = self.spark.createDataFrame(batch_data, schema=customer_schema)
+                
+                # Write batch
+                write_mode = "overwrite" if is_first_batch else "append"
+                batch_df.write \
+                    .mode(write_mode) \
+                    .format("delta") \
+                    .saveAsTable(f"{self.catalog}.{self.schema}.gold_customer_dim")
+                
+                is_first_batch = False
+                total_written += len(batch_data)
+                
+                # Log progress
+                progress_pct = (total_written / num_customers) * 100
+                logger.info(f"Written {total_written:,}/{num_customers:,} customers ({progress_pct:.1f}%)")
+
+        except Exception as e:
+            logger.error(f"Error generating customer data at batch starting {batch_start}: {str(e)}")
+            raise
         
         # Add table comment
         self.spark.sql(f"""
@@ -254,19 +306,16 @@ class DimensionGenerator:
             )
         """)
         
-        logger.info(f"Created customer dimension with {num_customers:,} records")
+        logger.info(f"Created customer dimension with {total_written:,} records")
     
-    def create_product_dimension(self):
-        """Create and populate product dimension"""
+    def create_product_dimension(self) -> None:
+        """Create and populate product dimension."""
         logger.info("Generating product dimension...")
         
-        # Use configured number of products
-        configured_products = self.config['products']
-        num_products = configured_products
+        num_products = self.config['products']
         
-        # Warn if generating large number of products (performance consideration)
         if num_products > 50000:
-            logger.warning(f"Generating {num_products:,} products - this may take significant time and memory")
+            logger.warning(f"Generating {num_products:,} products - this may take significant time")
         elif num_products > 20000:
             logger.info(f"Generating {num_products:,} products - this may take several minutes")
         
@@ -302,12 +351,13 @@ class DimensionGenerator:
         seasons = ['Spring', 'Summer', 'Fall', 'Winter', 'Year-round']
         
         # Calculate total subcategories first
-        total_subcategories = 0
-        for cat2_dict in categories.values():
-            for cat3_list in cat2_dict.values():
-                total_subcategories += len(cat3_list)
+        total_subcategories = sum(
+            len(cat3_list)
+            for cat2_dict in categories.values()
+            for cat3_list in cat2_dict.values()
+        )
 
-        products_per_cat = 1 if (num_products // total_subcategories) < 1 else (num_products // total_subcategories)  # At least 1 product per subcategory
+        products_per_cat = max(1, num_products // total_subcategories)
 
         # Generate products
         products_data = []
@@ -318,34 +368,34 @@ class DimensionGenerator:
                 for cat3 in cat3_list:
                     
                     for _ in range(products_per_cat):
-                        sku = f"SKU_{str(product_id).zfill(6)}"
-                        base_price = float(int(random.uniform(29.99, 299.99) * 100)) / 100
+                        sku = f"SKU_{product_id:06d}"
+                        base_price = float(int(self._rng.uniform(29.99, 299.99) * 100)) / 100
                         
                         product = {
                             'product_key': product_id,
-                            'product_id': f"PROD_{str(product_id).zfill(6)}",
+                            'product_id': f"PROD_{product_id:06d}",
                             'sku': sku,
-                            'product_name': f"{random.choice(brands)} {cat3.title()} {product_id}",
-                            'brand': random.choice(brands),
+                            'product_name': f"{self._rng.choice(brands)} {cat3.title()} {product_id}",
+                            'brand': self._rng.choice(brands),
                             'category_level_1': cat1,
                             'category_level_2': cat2,
                             'category_level_3': cat3,
-                            'color_family': random.choice(['Neutral', 'Bright', 'Dark', 'Pastel']),
-                            'color_name': random.choice(colors),
+                            'color_family': self._rng.choice(['Neutral', 'Bright', 'Dark', 'Pastel']),
+                            'color_name': self._rng.choice(colors),
                             'size_range': 'XS-XL' if cat1 == 'apparel' else 'ONE SIZE',
-                            'material_primary': random.choice(materials),
-                            'material_composition': f"{random.randint(60, 100)}% {random.choice(materials)}",
-                            'season_code': random.choice(seasons),
-                            'collection_name': f"{random.choice(seasons)} {datetime.now().year} Collection",
-                            'launch_date': (datetime.now() - timedelta(days=random.randint(1, 730))).date(),
-                            'end_of_life_date': None if random.random() > 0.2 else (datetime.now() + timedelta(days=random.randint(30, 365))).date(),
+                            'material_primary': self._rng.choice(materials),
+                            'material_composition': f"{self._rng.randint(60, 100)}% {self._rng.choice(materials)}",
+                            'season_code': self._rng.choice(seasons),
+                            'collection_name': f"{self._rng.choice(seasons)} {datetime.now().year} Collection",
+                            'launch_date': (datetime.now() - timedelta(days=self._rng.randint(1, 730))).date(),
+                            'end_of_life_date': None if self._rng.random() > 0.2 else (datetime.now() + timedelta(days=self._rng.randint(30, 365))).date(),
                             'base_price': base_price,
-                            'unit_cost': float(int(base_price * random.uniform(0.3, 0.5) * 100)) / 100,
-                            'margin_percent': float(int(random.uniform(40, 70) * 100)) / 100,
+                            'unit_cost': float(int(base_price * self._rng.uniform(0.3, 0.5) * 100)) / 100,
+                            'margin_percent': float(int(self._rng.uniform(40, 70) * 100)) / 100,
                             'price_tier': 'luxury' if base_price > 200 else 'premium' if base_price > 100 else 'mid' if base_price > 50 else 'budget',
-                            'sustainability_flag': random.choice([True, False]),
-                            'is_active': random.random() > 0.1,
-                            'source_system': 'PLM_SYSTEM',
+                            'sustainability_flag': self._rng.choice([True, False]),
+                            'is_active': self._rng.random() > 0.1,
+                            'source_system': SOURCE_SYSTEMS['product'],
                             'etl_timestamp': datetime.now()
                         }
                         products_data.append(product)
@@ -390,7 +440,8 @@ class DimensionGenerator:
         ])
 
         # Create DataFrame with explicit schema
-        product_df = self.spark.createDataFrame(products_data[:num_products], schema=product_schema)
+        final_products = products_data[:num_products]
+        product_df = self.spark.createDataFrame(final_products, schema=product_schema)
         
         # Write to Delta table
         product_df.write \
@@ -405,10 +456,10 @@ class DimensionGenerator:
             )
         """)
         
-        logger.info(f"Created product dimension with {len(products_data[:num_products]):,} records")
+        logger.info(f"Created product dimension with {len(final_products):,} records")
     
-    def create_location_dimension(self):
-        """Create and populate location dimension
+    def create_location_dimension(self) -> None:
+        """Create and populate location dimension.
         
         Note: Location dimension uses a fixed set of 13 locations (10 stores, 2 warehouses, 1 DC).
         The configured 'locations' parameter is currently ignored. This is by design to maintain
@@ -500,19 +551,19 @@ class DimensionGenerator:
                 'location_key': int(i + 1),
                 'channel': 'physical' if loc['location_type'] == 'store' else 'digital',
                 'district': f"District_{loc['region'][:2].upper()}",
-                'postal_code': f"{random.randint(10000, 99999)}",
-                'latitude': float(int(random.uniform(25.0, 49.0) * 1000000)) / 1000000,
-                'longitude': float(int(random.uniform(-125.0, -66.0) * 1000000)) / 1000000,
+                'postal_code': f"{self._rng.randint(10000, 99999)}",
+                'latitude': float(int(self._rng.uniform(25.0, 49.0) * 1000000)) / 1000000,
+                'longitude': float(int(self._rng.uniform(-125.0, -66.0) * 1000000)) / 1000000,
                 'total_sqft': float(loc['total_sqft']),
-                'open_date': (datetime.now() - timedelta(days=random.randint(365, 3650))).date(),
+                'open_date': (datetime.now() - timedelta(days=self._rng.randint(365, 3650))).date(),
                 'close_date': None,
                 'is_active': True,
                 'timezone': 'America/New_York' if loc['region'] == 'Northeast' else 
                            'America/Chicago' if loc['region'] == 'Midwest' else
                            'America/Denver' if loc['region'] == 'Southwest' else
                            'America/Los_Angeles',
-                'state_tax_rate': state_tax_rates.get(state, 0.07),  # Default 7% if state not found
-                'source_system': 'STORE_OPS_WMS',
+                'state_tax_rate': state_tax_rates.get(state, 0.07),
+                'source_system': SOURCE_SYSTEMS['location'],
                 'etl_timestamp': datetime.now()
             })
         
@@ -561,8 +612,8 @@ class DimensionGenerator:
         
         logger.info(f"Created location dimension with {len(locations_data)} records")
     
-    def create_date_dimension(self):
-        """Create and populate date dimension"""
+    def create_date_dimension(self) -> None:
+        """Create and populate date dimension."""
         logger.info("Generating date dimension...")
         
         start_date = datetime.now() - timedelta(days=self.config['historical_days'])
@@ -675,8 +726,8 @@ class DimensionGenerator:
         
         logger.info(f"Created date dimension with {len(dates_data):,} records")
     
-    def create_channel_dimension(self):
-        """Create and populate channel dimension"""
+    def create_channel_dimension(self) -> None:
+        """Create and populate channel dimension."""
         logger.info("Generating channel dimension...")
         
         channels_data = [
@@ -773,7 +824,7 @@ class DimensionGenerator:
         # Add audit fields
         for channel in channels_data:
             channel.update({
-                'source_system': 'CHANNEL_MASTER',
+                'source_system': SOURCE_SYSTEMS['channel'],
                 'etl_timestamp': datetime.now()
             })
         
@@ -795,8 +846,8 @@ class DimensionGenerator:
         
         logger.info(f"Created channel dimension with {len(channels_data)} records")
     
-    def create_time_dimension(self):
-        """Create and populate time dimension (hourly granularity)"""
+    def create_time_dimension(self) -> None:
+        """Create and populate time dimension (hourly granularity)."""
         logger.info("Generating time dimension...")
         
         times_data = []
@@ -822,7 +873,7 @@ class DimensionGenerator:
                     'time_key': time_key,
                     'hour': hour,
                     'minute': minute,
-                    'hour_minute': f"{str(hour).zfill(2)}:{str(minute).zfill(2)}",
+                    'hour_minute': f"{hour:02d}:{minute:02d}",
                     'am_pm': 'AM' if hour < 12 else 'PM',
                     'hour_12': hour if hour <= 12 else hour - 12,
                     'period_of_day': period,

@@ -10,6 +10,7 @@ import logging
 from typing import List, Dict, Optional, Union
 from pyspark.sql import SparkSession
 from .config import FashionRetailConfig
+from .constants import DIMENSION_TABLES, FACT_TABLES, AGGREGATE_TABLES, UTILITY_TABLES, ALL_TABLES
 
 logger = logging.getLogger(__name__)
 
@@ -30,32 +31,10 @@ class TableCleanup:
             
         self.full_schema = f"{self.catalog}.{self.schema}"
         
-        # Define all Fashion Retail tables that can be created
-        self.fashion_retail_tables = [
-            # Dimension tables
-            'gold_customer_dim',
-            'gold_product_dim', 
-            'gold_location_dim',
-            'gold_date_dim',
-            'gold_channel_dim',
-            'gold_time_dim',
-            
-            # Fact tables
-            'gold_sales_fact',
-            'gold_inventory_fact',
-            'gold_customer_event_fact',
-            'gold_cart_abandonment_fact',
-            'gold_demand_forecast_fact',
-            'gold_stockout_events',
-            
-            # Bridge/Aggregate tables
-            'gold_customer_product_affinity_agg',
-            'gold_size_fit_bridge',
-            'gold_inventory_movement_fact',
-            
-            # Utility tables
-            'sample_queries'
-        ]
+        # Use centralized table list from constants
+        self.fashion_retail_tables = (
+            DIMENSION_TABLES + FACT_TABLES + AGGREGATE_TABLES + UTILITY_TABLES
+        )
     
     def list_tables(self, show_details: bool = True) -> List[Dict]:
         """

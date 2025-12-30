@@ -82,6 +82,10 @@ class SalesValidator:
     This class is the bridge between sales generation and inventory management.
     It ensures that the synthetic data generation respects inventory constraints
     while maintaining realistic customer behavior patterns.
+    
+    Thread Safety:
+        NOT thread-safe. Uses instance-level random generator and mutable statistics.
+        Create separate instances for parallel processing with different seeds.
 
     Usage:
         validator = SalesValidator(inventory_manager, config)
@@ -100,7 +104,7 @@ class SalesValidator:
         results = validator.allocate_batch(requests)
     """
 
-    def __init__(self, inventory_manager, config: dict):
+    def __init__(self, inventory_manager: 'InventoryManager', config: dict):
         """
         Initialize SalesValidator.
 
@@ -120,8 +124,8 @@ class SalesValidator:
         self.constrained_requests = 0
         self.failed_requests = 0
 
-        # Set random seed
-        random.seed(self.random_seed)
+        # Use instance-level random generator for reproducibility
+        self._rng = random.Random(self.random_seed)
 
         logger.info(f"SalesValidator initialized with allocation_strategy={self.allocation_strategy}")
 
@@ -229,7 +233,7 @@ class SalesValidator:
 
             # Randomize order for fair allocation
             if self.allocation_strategy == 'random':
-                random.shuffle(group_requests)
+                self._rng.shuffle(group_requests)
             elif self.allocation_strategy == 'priority':
                 # Sort by priority (higher priority first)
                 group_requests.sort(key=lambda r: r.priority, reverse=True)

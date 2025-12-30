@@ -3,13 +3,11 @@ Fashion Retail Gold Layer Data Generator
 Main orchestrator for creating synthetic star schema data in Databricks
 """
 
-import sys
 import time
 from datetime import datetime, timedelta
 from pyspark.sql import SparkSession
-from delta.tables import DeltaTable
 import logging
-from typing import Union, Dict, Any
+from typing import Union, Dict, Any, Optional, Callable
 
 from .config import FashionRetailConfig
 from .data.dimension_generator import DimensionGenerator
@@ -17,6 +15,10 @@ from .data.fact_generator import FactGenerator
 from .data.aggregates import AggregateGenerator
 from .inventory.manager import InventoryManager
 from .inventory.validator import SalesValidator
+from .constants import (
+    DIMENSION_TABLES, FACT_TABLES, AGGREGATE_TABLES, 
+    ALL_TABLES, CDC_ENABLED_TABLES
+)
 
 # Configure logging
 logging.basicConfig(
@@ -58,31 +60,13 @@ class FashionRetailDataGenerator:
         
         logger.info("Catalog setup completed")
     
-    def drop_existing_tables(self):
-        """Drop existing tables if force_recreate is True"""
+    def drop_existing_tables(self) -> None:
+        """Drop existing tables if force_recreate is True."""
         if self.config.get('force_recreate', False):
             logger.warning("Dropping existing tables...")
             
-            tables = [
-                # Dimensions
-                'gold_customer_dim',
-                'gold_product_dim',
-                'gold_location_dim',
-                'gold_date_dim',
-                'gold_channel_dim',
-                'gold_time_dim',
-                # Facts
-                'gold_sales_fact',
-                'gold_inventory_fact',
-                'gold_customer_event_fact',
-                'gold_cart_abandonment_fact',
-                'gold_demand_forecast_fact',
-                'gold_stockout_events',  # Added new table
-                # Bridge/Aggregates
-                'gold_customer_product_affinity_agg',
-                'gold_size_fit_bridge',
-                'gold_inventory_movement_fact'
-            ]
+            # Use centralized table list from constants
+            tables = DIMENSION_TABLES + FACT_TABLES + AGGREGATE_TABLES
             
             for table in tables:
                 try:
@@ -182,25 +166,8 @@ class FashionRetailDataGenerator:
             except Exception as e:
                 logger.warning(f"Could not optimize {table}: {str(e)}")
         
-        # Compute statistics - only for Delta tables we created
-        # Using explicit list to avoid issues with unsupported table types
-        tables_to_analyze = [
-            'gold_customer_dim',
-            'gold_product_dim',
-            'gold_location_dim',
-            'gold_date_dim',
-            'gold_channel_dim',
-            'gold_time_dim',
-            'gold_sales_fact',
-            'gold_inventory_fact',
-            'gold_customer_event_fact',
-            'gold_cart_abandonment_fact',
-            'gold_demand_forecast_fact',
-            'gold_stockout_events',
-            'gold_customer_product_affinity_agg',
-            'gold_size_fit_bridge',
-            'gold_inventory_movement_fact'
-        ]
+        # Compute statistics using centralized table list from constants
+        tables_to_analyze = DIMENSION_TABLES + FACT_TABLES + AGGREGATE_TABLES
         
         for table_name in tables_to_analyze:
             try:
@@ -209,18 +176,13 @@ class FashionRetailDataGenerator:
             except Exception as e:
                 logger.warning(f"Could not compute statistics for {table_name}: {str(e)}")
     
-    def enable_cdc(self):
-        """Enable Change Data Capture on specified tables"""
+    def enable_cdc(self) -> None:
+        """Enable Change Data Capture on specified tables."""
         if self.config.get('enable_cdc', False):
             logger.info("Enabling CDC on fact tables...")
             
-            cdc_tables = [
-                'gold_sales_fact',
-                'gold_inventory_fact',
-                'gold_customer_event_fact'
-            ]
-            
-            for table in cdc_tables:
+            # Use centralized CDC table list from constants
+            for table in CDC_ENABLED_TABLES:
                 try:
                     self.spark.sql(f"""
                         ALTER TABLE {self.catalog}.{self.schema}.{table}

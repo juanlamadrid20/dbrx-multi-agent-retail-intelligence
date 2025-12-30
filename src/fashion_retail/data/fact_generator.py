@@ -4,24 +4,48 @@ Creates and populates all fact tables with realistic transactional data
 """
 
 from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql.functions import *
-from pyspark.sql.types import *
+from pyspark.sql.functions import col, count, sum as spark_sum, avg as spark_avg
+from pyspark.sql.types import (
+    StructType, StructField, IntegerType, LongType, StringType, DoubleType,
+    DateType, TimestampType, BooleanType
+)
 from datetime import datetime as dt, timedelta
 import random
-import math
 import logging
+from typing import Dict, List, Optional, Any
 
 # Import new inventory-aligned components
 from ..inventory.manager import InventoryManager
 from ..inventory.validator import SalesValidator, PurchaseRequest, BatchPurchaseBuilder
 from ..inventory.stockout_generator import StockoutGenerator
+from ..constants import (
+    DIGITAL_RETURN_MULTIPLIER, STORE_RETURN_MULTIPLIER,
+    MONTHLY_SEASONALITY, SEGMENT_DISCOUNT_RANGES, CUSTOMER_SEGMENTS,
+    SOURCE_SYSTEMS, MAX_RECORDS_BEFORE_WRITE,
+)
 
 logger = logging.getLogger(__name__)
 
-class FactGenerator:
-    """Generate fact tables for fashion retail star schema"""
 
-    def __init__(self, spark: SparkSession, config: dict, inventory_manager=None, sales_validator=None):
+class FactGenerator:
+    """Generate fact tables for fashion retail star schema.
+    
+    Uses instance-level random number generator for reproducibility and
+    batch processing for memory-efficient generation of large datasets.
+    
+    Thread Safety Note:
+        This class is NOT thread-safe. Each instance maintains its own state
+        and should be used from a single thread. For parallel processing,
+        create separate instances per thread with different random seeds.
+    """
+
+    def __init__(
+        self,
+        spark: SparkSession,
+        config: dict,
+        inventory_manager: Optional[InventoryManager] = None,
+        sales_validator: Optional[SalesValidator] = None
+    ):
         self.spark = spark
         self.config = config
         self.catalog = config['catalog']
@@ -31,11 +55,12 @@ class FactGenerator:
         self.inventory_manager = inventory_manager
         self.sales_validator = sales_validator
 
+        # Use instance-level random generator for reproducibility
+        random_seed = config.get('random_seed', 42)
+        self._rng = random.Random(random_seed)
+
         # Load dimension data for foreign keys
         self._load_dimensions()
-
-        # Set seed for reproducibility
-        random.seed(config.get('random_seed', 42))
     
     def _load_dimensions(self):
         """Load dimension data for generating foreign keys"""
@@ -87,8 +112,16 @@ class FactGenerator:
         logger.info(f"Loaded dimensions: {len(self.customer_keys)} customers, "
                    f"{len(self.product_keys)} products, {len(self.location_keys)} locations")
     
-    def _apply_seasonality_multiplier(self, base_value, date_info):
-        """Apply seasonality to a base value"""
+    def _apply_seasonality_multiplier(self, base_value: float, date_info: Dict) -> float:
+        """Apply seasonality to a base value.
+        
+        Args:
+            base_value: Base numeric value to adjust
+            date_info: Dictionary with date attributes (is_peak_season, is_sale_period, etc.)
+            
+        Returns:
+            Adjusted value with seasonality multipliers applied
+        """
         multiplier = 1.0
         
         # Seasonal multipliers
@@ -101,38 +134,23 @@ class FactGenerator:
         if date_info['is_weekend']:
             multiplier *= 1.2
         
-        # Monthly patterns
+        # Monthly patterns from constants
         month = int(str(date_info['date_key'])[4:6])
-        monthly_factors = {
-            1: 0.7,   # Post-holiday slowdown
-            2: 0.8,
-            3: 1.0,   # Spring launch
-            4: 1.2,
-            5: 1.1,
-            6: 1.0,
-            7: 0.9,   # Summer slowdown
-            8: 0.9,
-            9: 1.1,   # Back to school
-            10: 1.2,
-            11: 1.5,  # Black Friday
-            12: 1.8   # Holiday peak
-        }
-        multiplier *= monthly_factors.get(month, 1.0)
+        multiplier *= MONTHLY_SEASONALITY.get(month, 1.0)
         
         return base_value * multiplier
     
-    def create_sales_fact(self):
-        """Create and populate sales fact table"""
+    def create_sales_fact(self) -> None:
+        """Create and populate sales fact table."""
         logger.info("Generating sales fact table...")
         
-        sales_data = []
+        sales_data: List[Dict[str, Any]] = []
         transaction_id = 1
         line_item_id = 1
-        is_first_batch = True  # Track first batch for overwrite vs append
+        is_first_batch = True
         
-        # Calculate daily transaction volume
-        total_days = len(self.date_keys)
-        avg_transactions_per_day = 500  # Base rate
+        # Base rate for daily transactions
+        avg_transactions_per_day = 500
         
         for date_info in self.date_keys:
             # Determine number of transactions for this day
@@ -140,87 +158,62 @@ class FactGenerator:
                 avg_transactions_per_day, 
                 date_info
             )
-            num_transactions = int(random.gauss(base_transactions, base_transactions * 0.2))
+            num_transactions = int(self._rng.gauss(base_transactions, base_transactions * 0.2))
             
             for _ in range(num_transactions):
                 # Select random customer
-                customer = random.choice(self.customer_keys)
+                customer = self._rng.choice(self.customer_keys)
                 
-                # Customer segment affects purchase behavior
+                # Customer segment affects purchase behavior - use constants
                 segment = customer['segment']
-                if segment == 'vip':
-                    items_in_basket = random.choice([3, 4, 5, 6, 7, 8])  # VIP customers buy more
-                    discount_probability = 0.15  # Low discount rate for VIP
-                    return_probability = 0.05  # Lower return rate
-                elif segment == 'premium':
-                    items_in_basket = random.choice([2, 3, 4, 5, 6])  # Premium customers buy multiple items
-                    discount_probability = 0.25
-                    return_probability = 0.08
-                elif segment == 'loyal':
-                    items_in_basket = random.choice([2, 3, 4, 5])  # Loyal customers consistent purchases
-                    discount_probability = 0.30  # Moderate discounts for loyalty
-                    return_probability = 0.10
-                elif segment == 'regular':
-                    items_in_basket = random.choice([1, 2, 3, 4])  # Regular purchasing pattern
-                    discount_probability = 0.35
-                    return_probability = 0.12
-                else:  # new customers
-                    items_in_basket = random.choice([1, 2, 3])  # New customers start small
-                    discount_probability = 0.40  # Higher discounts to attract new customers
-                    return_probability = 0.15  # Higher return rate due to uncertainty
+                segment_config = CUSTOMER_SEGMENTS.get(segment, CUSTOMER_SEGMENTS['regular'])
+                
+                items_in_basket = self._rng.choice(segment_config['items_range'])
+                discount_probability = segment_config['discount_probability']
+                return_probability = segment_config['return_probability']
                 
                 # Select channel based on customer preference
-                if random.random() < 0.7:  # 70% chance of preferred channel
+                if self._rng.random() < 0.7:  # 70% chance of preferred channel
                     channel = next((c for c in self.channel_keys 
                                    if customer['preferred_channel'] in c['channel_code'].lower()), 
-                                  random.choice(self.channel_keys))
+                                  self._rng.choice(self.channel_keys))
                 else:
-                    channel = random.choice(self.channel_keys)
+                    channel = self._rng.choice(self.channel_keys)
                 
                 # Select location
                 if channel['is_digital']:
-                    location = random.choice(self.warehouse_locations)
+                    location = self._rng.choice(self.warehouse_locations)
                 else:
-                    location = random.choice(self.store_locations)
+                    location = self._rng.choice(self.store_locations)
                 
                 # Generate transaction items
-                order_number = f"ORD_{str(transaction_id).zfill(10)}"
+                order_number = f"ORD_{transaction_id:010d}"
                 
                 for item_num in range(items_in_basket):
-                    # Select product (with bias towards popular items)
-                    # Select product (simplified to avoid random.choices)
-                    product = random.choice(self.product_keys)
+                    product = self._rng.choice(self.product_keys)
                     
                     # Calculate pricing
                     base_price = float(product['base_price'])
                     
                     # Apply discounts (influenced by customer segment)
-                    is_promotional = date_info['is_sale_period'] and random.random() < 0.3
-                    is_clearance = product['season_code'] != date_info['season'] and random.random() < 0.2
-                    has_segment_discount = random.random() < discount_probability
+                    is_promotional = date_info['is_sale_period'] and self._rng.random() < 0.3
+                    is_clearance = product['season_code'] != date_info['season'] and self._rng.random() < 0.2
+                    has_segment_discount = self._rng.random() < discount_probability
 
                     if is_clearance:
-                        discount_pct = random.uniform(0.3, 0.5)
+                        discount_pct = self._rng.uniform(0.3, 0.5)
                     elif is_promotional:
-                        discount_pct = random.uniform(0.1, 0.3)
+                        discount_pct = self._rng.uniform(0.1, 0.3)
                     elif has_segment_discount:
-                        # Segment-based discount amount varies by segment
-                        if segment == 'vip':
-                            discount_pct = random.uniform(0.05, 0.15)  # Smaller discounts for VIP
-                        elif segment == 'premium':
-                            discount_pct = random.uniform(0.08, 0.18)
-                        elif segment == 'loyal':
-                            discount_pct = random.uniform(0.10, 0.20)
-                        elif segment == 'regular':
-                            discount_pct = random.uniform(0.12, 0.25)
-                        else:  # new customers
-                            discount_pct = random.uniform(0.15, 0.30)  # Larger discounts for new customers
+                        # Use segment discount ranges from constants
+                        discount_range = SEGMENT_DISCOUNT_RANGES.get(segment, (0.10, 0.20))
+                        discount_pct = self._rng.uniform(*discount_range)
                     else:
                         discount_pct = 0.0
                     
                     unit_price = base_price
                     discount_amount = float(int(base_price * discount_pct * 100)) / 100
-                    requested_quantity = random.choice([1, 2, 3])
+                    requested_quantity = self._rng.choice([1, 2, 3])
 
                     # INVENTORY VALIDATION - Feature: 001-i-want-to
                     # Validate purchase against available inventory
@@ -260,13 +253,13 @@ class FactGenerator:
                     # Return probability (influenced by customer segment and channel)
                     # Fashion e-commerce typically has 25-40% return rates vs 8-10% in-store
                     base_return_rate = return_probability
-                    channel_multiplier = 2.5 if channel['is_digital'] else 0.8  # Digital has significantly higher returns
-                    is_return = random.random() < (base_return_rate * channel_multiplier)
+                    channel_multiplier = DIGITAL_RETURN_MULTIPLIER if channel['is_digital'] else STORE_RETURN_MULTIPLIER
+                    is_return = self._rng.random() < (base_return_rate * channel_multiplier)
 
                     # Calculate return restocking date (1-3 days after return)
                     return_restocked_date_key = None
                     if is_return and self.inventory_manager:
-                        delay_days = random.randint(*self.config.get('return_delay_days', (1, 3)))
+                        delay_days = self._rng.randint(*self.config.get('return_delay_days', (1, 3)))
                         return_date = dt.strptime(str(date_info['date_key']), '%Y%m%d')
                         restock_date = return_date + timedelta(days=delay_days)
                         return_restocked_date_key = int(restock_date.strftime('%Y%m%d'))
@@ -281,37 +274,35 @@ class FactGenerator:
                         )
 
                     sales_record = {
-                        'transaction_id': f"TXN_{str(transaction_id).zfill(10)}",
-                        'line_item_id': f"LINE_{str(line_item_id).zfill(12)}",
+                        'transaction_id': f"TXN_{transaction_id:010d}",
+                        'line_item_id': f"LINE_{line_item_id:012d}",
                         'customer_key': customer['customer_key'],
                         'product_key': product['product_key'],
                         'date_key': date_info['date_key'],
-                        'time_key': random.choice([900, 1200, 1500, 1800, 2000]),  # Peak hours
+                        'time_key': self._rng.choice([900, 1200, 1500, 1800, 2000]),  # Peak hours
                         'location_key': location['location_key'],
                         'channel_key': channel['channel_key'],
                         'order_number': order_number,
                         'pos_terminal_id': f"POS_{location['location_key']}" if not channel['is_digital'] else None,
-                        'sales_associate_id': f"SA_{random.randint(1, 100)}" if not channel['is_digital'] else None,
-                        'quantity_sold': quantity_sold,  # ALLOCATED quantity
+                        'sales_associate_id': f"SA_{self._rng.randint(1, 100)}" if not channel['is_digital'] else None,
+                        'quantity_sold': quantity_sold,
                         'unit_price': unit_price,
                         'discount_amount': discount_amount,
                         'tax_amount': tax_amount,
                         'net_sales_amount': net_sales,
                         'gross_margin_amount': gross_margin,
                         'is_return': is_return,
-                        'is_exchange': is_return and random.random() < 0.3,
+                        'is_exchange': is_return and self._rng.random() < 0.3,
                         'is_promotional': is_promotional,
                         'is_clearance': is_clearance,
-                        'fulfillment_type': random.choice(['ship', 'pickup', 'same_day']) if channel['is_digital']
+                        'fulfillment_type': self._rng.choice(['ship', 'pickup', 'same_day']) if channel['is_digital']
                                            else 'in_store',
-                        'payment_method': random.choice(['credit_card', 'debit_card', 'paypal', 'apple_pay']),
-                        # NEW COLUMNS - Feature: 001-i-want-to
+                        'payment_method': self._rng.choice(['credit_card', 'debit_card', 'paypal', 'apple_pay']),
                         'quantity_requested': quantity_requested,
                         'is_inventory_constrained': is_inventory_constrained,
                         'inventory_at_purchase': inventory_at_purchase,
                         'return_restocked_date_key': return_restocked_date_key,
-                        # Standard columns
-                        'source_system': 'OMS_POS_ECOMM',
+                        'source_system': SOURCE_SYSTEMS['sales'],
                         'etl_timestamp': dt.now()
                     }
                     sales_data.append(sales_record)
@@ -339,57 +330,45 @@ class FactGenerator:
         
         logger.info(f"Created sales fact table with ~{transaction_id:,} transactions")
     
-    def create_inventory_fact(self):
-        """Create and populate inventory fact table (daily snapshots)"""
+    def create_inventory_fact(self) -> None:
+        """Create and populate inventory fact table (daily snapshots)."""
         logger.info("Generating inventory fact table...")
 
-        inventory_data = []
+        inventory_data: List[Dict[str, Any]] = []
+        is_first_batch = True
 
-        # INVENTORY MANAGER INTEGRATION - Feature: 001-i-want-to
         if self.inventory_manager:
-            # Use InventoryManager for real-time state tracking
             logger.info("Using InventoryManager for inventory snapshots...")
 
-            # Generate snapshots for all dates (or subset for testing)
             snapshot_dates = self.date_keys[-30:] if self.config.get('test_mode') else self.date_keys
 
             for date_info in snapshot_dates:
-                # Get inventory snapshot from manager
                 snapshot = self.inventory_manager.get_inventory_snapshot(date_info['date_key'])
 
-                # Enrich snapshot with additional metrics
                 for position_data in snapshot:
                     product = next((p for p in self.product_keys if p['product_key'] == position_data['product_key']), None)
                     if not product:
                         continue
 
-                    # Financial metrics
                     unit_cost = float(product['base_price']) * 0.4
                     qty_on_hand = position_data['quantity_on_hand']
                     inventory_value_cost = float(int(qty_on_hand * unit_cost * 100)) / 100
                     inventory_value_retail = float(int(qty_on_hand * float(product['base_price']) * 100)) / 100
 
-                    # Inventory health metrics (simplified calculations)
-                    days_of_supply = random.randint(5, 90)
-                    stock_cover_days = random.randint(7, 60)
-                    reorder_point = random.randint(20, 200)
-                    reorder_quantity = random.randint(50, 500)
+                    days_of_supply = self._rng.randint(5, 90)
+                    stock_cover_days = self._rng.randint(7, 60)
+                    reorder_point = self._rng.randint(20, 200)
+                    reorder_quantity = self._rng.randint(50, 500)
 
-                    # Additional inventory components
-                    qty_in_transit = random.randint(0, 50) if random.random() < 0.2 else 0
-
-                    # Flags
+                    qty_in_transit = self._rng.randint(0, 50) if self._rng.random() < 0.2 else 0
                     is_overstock = days_of_supply > 60
 
-                    # Calculate last/next replenishment dates (if in stockout)
                     last_replenishment_date = None
                     next_replenishment_date = None
                     if position_data['is_stockout']:
-                        # Would be calculated from replenishment schedule in production
-                        # For synthetic data, use random dates
                         current_date = dt.strptime(str(date_info['date_key']), '%Y%m%d')
-                        last_replenishment = current_date - timedelta(days=random.randint(7, 30))
-                        next_replenishment = current_date + timedelta(days=random.randint(1, 7))
+                        last_replenishment = current_date - timedelta(days=self._rng.randint(7, 30))
+                        next_replenishment = current_date + timedelta(days=self._rng.randint(1, 7))
                         last_replenishment_date = last_replenishment.date()
                         next_replenishment_date = next_replenishment.date()
 
@@ -411,59 +390,50 @@ class FactGenerator:
                         'is_stockout': position_data['is_stockout'],
                         'is_overstock': is_overstock,
                         'is_discontinued': False,
-                        # NEW COLUMNS - Feature: 001-i-want-to
                         'stockout_duration_days': position_data.get('stockout_duration_days', 0),
                         'last_replenishment_date': last_replenishment_date,
                         'next_replenishment_date': next_replenishment_date,
-                        # Standard columns
-                        'source_system': 'WMS_STORE_INV',
+                        'source_system': SOURCE_SYSTEMS['inventory'],
                         'etl_timestamp': dt.now()
                     }
                     inventory_data.append(inventory_record)
 
-                # Batch write every 100K records
-                if len(inventory_data) >= 100000:
+                if len(inventory_data) >= MAX_RECORDS_BEFORE_WRITE:
                     self._write_batch(inventory_data, 'gold_inventory_fact',
-                                    mode='append' if len(inventory_data) > 100000 else 'overwrite')
+                                    mode='overwrite' if is_first_batch else 'append')
+                    is_first_batch = False
                     inventory_data = []
 
         else:
-            # FALLBACK: Old behavior if no InventoryManager (backward compatibility)
             logger.warning("No InventoryManager provided - using legacy inventory generation")
 
-            for date_info in self.date_keys[-30:]:  # Last 30 days for demo
-                for product in self.product_keys[:1000]:  # Limit products for demo
+            for date_info in self.date_keys[-30:]:
+                for product in self.product_keys[:1000]:
                     for location in self.location_keys:
-                        # Base inventory levels vary by location type
                         if location['location_type'] == 'dc':
-                            base_qty = random.randint(500, 2000)
+                            base_qty = self._rng.randint(500, 2000)
                         elif location['location_type'] == 'warehouse':
-                            base_qty = random.randint(200, 800)
-                        else:  # store
-                            base_qty = random.randint(10, 100)
+                            base_qty = self._rng.randint(200, 800)
+                        else:
+                            base_qty = self._rng.randint(10, 100)
 
-                        # Apply seasonality and randomness
                         qty_on_hand = int(self._apply_seasonality_multiplier(base_qty, date_info) *
-                                         random.uniform(0.5, 1.5))
+                                         self._rng.uniform(0.5, 1.5))
 
-                        # Calculate other inventory metrics
-                        qty_reserved = int(qty_on_hand * random.uniform(0, 0.3))
+                        qty_reserved = int(qty_on_hand * self._rng.uniform(0, 0.3))
                         qty_available = qty_on_hand - qty_reserved
-                        qty_in_transit = random.randint(0, 50) if random.random() < 0.2 else 0
-                        qty_damaged = random.randint(0, 5) if random.random() < 0.1 else 0
+                        qty_in_transit = self._rng.randint(0, 50) if self._rng.random() < 0.2 else 0
+                        qty_damaged = self._rng.randint(0, 5) if self._rng.random() < 0.1 else 0
 
-                        # Financial metrics
                         unit_cost = float(product['base_price']) * 0.4
                         inventory_value_cost = float(int(qty_on_hand * unit_cost * 100)) / 100
                         inventory_value_retail = float(int(qty_on_hand * float(product['base_price']) * 100)) / 100
 
-                        # Inventory health metrics
-                        days_of_supply = random.randint(5, 90)
-                        stock_cover_days = random.randint(7, 60)
-                        reorder_point = random.randint(20, 200)
-                        reorder_quantity = random.randint(50, 500)
+                        days_of_supply = self._rng.randint(5, 90)
+                        stock_cover_days = self._rng.randint(7, 60)
+                        reorder_point = self._rng.randint(20, 200)
+                        reorder_quantity = self._rng.randint(50, 500)
 
-                        # Flags
                         is_stockout = qty_available <= 0
                         is_overstock = days_of_supply > 60
 
@@ -485,15 +455,15 @@ class FactGenerator:
                             'is_stockout': is_stockout,
                             'is_overstock': is_overstock,
                             'is_discontinued': False,
-                            'source_system': 'WMS_STORE_INV',
+                            'source_system': SOURCE_SYSTEMS['inventory'],
                             'etl_timestamp': dt.now()
                         }
                         inventory_data.append(inventory_record)
 
-                        # Batch write
-                        if len(inventory_data) >= 100000:
+                        if len(inventory_data) >= MAX_RECORDS_BEFORE_WRITE:
                             self._write_batch(inventory_data, 'gold_inventory_fact',
-                                            mode='append' if len(inventory_data) > 100000 else 'overwrite')
+                                            mode='overwrite' if is_first_batch else 'append')
+                            is_first_batch = False
                             inventory_data = []
         
         # Write remaining records
@@ -509,35 +479,31 @@ class FactGenerator:
         
         logger.info(f"Created inventory fact table with daily snapshots")
     
-    def create_customer_event_fact(self):
-        """Create and populate customer event fact table"""
+    def create_customer_event_fact(self) -> None:
+        """Create and populate customer event fact table."""
         logger.info("Generating customer event fact table...")
         
         event_types = ['page_view', 'product_view', 'search', 'add_to_cart', 'remove_from_cart', 
                       'checkout_start', 'checkout_complete', 'filter_apply', 'size_guide_view']
         
-        events_data = []
+        events_data: List[Dict[str, Any]] = []
         event_id = 1
+        is_first_batch = True
         
-        # Generate events for last 30 days (for demo)
         for date_info in self.date_keys[-30:]:
-            # Number of events varies by day
             base_events = self._apply_seasonality_multiplier(self.config['events_per_day'], date_info)
-            num_events = int(random.gauss(base_events, base_events * 0.2))
+            num_events = int(self._rng.gauss(base_events, base_events * 0.2))
             
             for _ in range(num_events):
-                customer = random.choice(self.customer_keys)
-                product = random.choice(self.product_keys) if random.random() < 0.7 else None
-                channel = random.choice([c for c in self.channel_keys if c['is_digital']])
+                customer = self._rng.choice(self.customer_keys)
+                product = self._rng.choice(self.product_keys) if self._rng.random() < 0.7 else None
+                channel = self._rng.choice([c for c in self.channel_keys if c['is_digital']])
                 
-                event_type = random.choice(event_types)
+                event_type = self._rng.choice(event_types)
+                session_id = f"SESSION_{customer['customer_key']}_{date_info['date_key']}_{self._rng.randint(1, 10)}"
                 
-                # Generate session ID
-                session_id = f"SESSION_{customer['customer_key']}_{date_info['date_key']}_{random.randint(1, 10)}"
-                
-                # Event value depends on type
                 if event_type == 'checkout_complete':
-                    event_value = random.uniform(50, 500)
+                    event_value = self._rng.uniform(50, 500)
                     conversion_flag = True
                 elif event_type == 'add_to_cart':
                     event_value = float(product['base_price']) if product else 0
@@ -552,30 +518,30 @@ class FactGenerator:
                     'customer_key': customer['customer_key'],
                     'product_key': product['product_key'] if product else None,
                     'date_key': date_info['date_key'],
-                    'time_key': random.choice([900, 1200, 1500, 1800, 2000]),
+                    'time_key': self._rng.choice([900, 1200, 1500, 1800, 2000]),
                     'channel_key': channel['channel_key'],
-                    'location_key': None,  # Digital events don't have physical location
+                    'location_key': None,
                     'event_type': event_type,
                     'event_category': 'engagement' if 'view' in event_type else 'conversion' if 'checkout' in event_type else 'interaction',
                     'event_action': event_type,
                     'event_label': product['category_level_2'] if product else None,
                     'event_value': float(int(event_value * 100)) / 100,
-                    'time_on_page_seconds': random.randint(5, 300) if 'view' in event_type else 0,
-                    'bounce_flag': random.random() < 0.3 if event_type == 'page_view' else False,
+                    'time_on_page_seconds': self._rng.randint(5, 300) if 'view' in event_type else 0,
+                    'bounce_flag': self._rng.random() < 0.3 if event_type == 'page_view' else False,
                     'conversion_flag': conversion_flag,
                     'page_url': f"/products/{product['product_id']}" if product else "/home",
-                    'referrer_url': random.choice(['google.com', 'facebook.com', 'instagram.com', 'direct', 'email']),
+                    'referrer_url': self._rng.choice(['google.com', 'facebook.com', 'instagram.com', 'direct', 'email']),
                     'search_term': f"{product['category_level_2']} {product['brand']}" if event_type == 'search' and product else None,
-                    'source_system': 'GA4_ADOBE_STORE',
+                    'source_system': SOURCE_SYSTEMS['events'],
                     'etl_timestamp': dt.now()
                 }
                 events_data.append(event_record)
                 event_id += 1
                 
-                # Batch write
-                if len(events_data) >= 100000:
+                if len(events_data) >= MAX_RECORDS_BEFORE_WRITE:
                     self._write_batch(events_data, 'gold_customer_event_fact', 
-                                    mode='append' if event_id > 100001 else 'overwrite')
+                                    mode='overwrite' if is_first_batch else 'append')
+                    is_first_batch = False
                     events_data = []
         
         # Write remaining records
@@ -591,35 +557,29 @@ class FactGenerator:
         
         logger.info(f"Created customer event fact table with ~{event_id:,} events")
     
-    def create_cart_abandonment_fact(self):
-        """Create and populate cart abandonment fact table"""
+    def create_cart_abandonment_fact(self) -> None:
+        """Create and populate cart abandonment fact table."""
         logger.info("Generating cart abandonment fact table...")
         
-        abandonment_data = []
+        abandonment_data: List[Dict[str, Any]] = []
         
-        # Generate cart abandonments for last 90 days
         for date_info in self.date_keys[-90:]:
-            # Daily abandonment rate varies
             daily_abandonments = int(self._apply_seasonality_multiplier(50, date_info))
             
             for i in range(daily_abandonments):
-                customer = random.choice(self.customer_keys)
-                channel = random.choice([c for c in self.channel_keys if c['is_digital']])
+                customer = self._rng.choice(self.customer_keys)
+                channel = self._rng.choice([c for c in self.channel_keys if c['is_digital']])
 
-                # Cart value and items
-                items_count = random.choice([1, 2, 3, 4, 5])
-                cart_value = float(int(random.uniform(50, 500) * 100)) / 100
+                items_count = self._rng.choice([1, 2, 3, 4, 5])
+                cart_value = float(int(self._rng.uniform(50, 500) * 100)) / 100
 
-                # LOW INVENTORY INTEGRATION - Feature: 001-i-want-to
-                # Check if any items in cart have low inventory
                 low_inventory_trigger = False
                 inventory_constrained_items = 0
 
                 if self.sales_validator:
-                    # Simulate cart contents by checking random products
                     for _ in range(items_count):
-                        product = random.choice(self.product_keys)
-                        location = random.choice(self.location_keys)
+                        product = self._rng.choice(self.product_keys)
+                        location = self._rng.choice(self.location_keys)
 
                         is_low_inv = self.sales_validator.is_low_inventory(
                             product_key=product['product_key'],
@@ -631,29 +591,24 @@ class FactGenerator:
                             low_inventory_trigger = True
                             inventory_constrained_items += 1
 
-                # Adjust abandonment probability based on inventory
-                # +10pp abandonment rate when low inventory detected
                 base_abandonment_rate = 0.25
                 if low_inventory_trigger:
                     abandonment_rate = base_abandonment_rate + self.config.get('cart_abandonment_increase', 0.10)
                 else:
                     abandonment_rate = base_abandonment_rate
 
-                # Skip if this is not actually an abandonment (based on adjusted rate)
-                if random.random() > abandonment_rate:
+                if self._rng.random() > abandonment_rate:
                     continue
 
-                # Recovery metrics
-                recovery_email_sent = random.random() < 0.8
-                recovery_email_opened = recovery_email_sent and random.random() < 0.4
-                recovery_email_clicked = recovery_email_opened and random.random() < 0.3
-                is_recovered = recovery_email_clicked and random.random() < 0.25
+                recovery_email_sent = self._rng.random() < 0.8
+                recovery_email_opened = recovery_email_sent and self._rng.random() < 0.4
+                recovery_email_clicked = recovery_email_opened and self._rng.random() < 0.3
+                is_recovered = recovery_email_clicked and self._rng.random() < 0.25
 
-                # Determine suspected reason (include low_inventory if applicable)
-                if low_inventory_trigger and random.random() < 0.7:
+                if low_inventory_trigger and self._rng.random() < 0.7:
                     suspected_reason = 'low_inventory'
                 else:
-                    suspected_reason = random.choice(['high_shipping', 'price_concern', 'comparison_shopping',
+                    suspected_reason = self._rng.choice(['high_shipping', 'price_concern', 'comparison_shopping',
                                                       'technical_issue', 'payment_issue'])
 
                 abandonment_record = {
@@ -661,24 +616,22 @@ class FactGenerator:
                     'cart_id': f"CART_{date_info['date_key']}_{i}",
                     'customer_key': customer['customer_key'],
                     'date_key': date_info['date_key'],
-                    'time_key': random.choice([900, 1200, 1500, 1800, 2000]),
+                    'time_key': self._rng.choice([900, 1200, 1500, 1800, 2000]),
                     'channel_key': channel['channel_key'],
                     'cart_value': cart_value,
                     'items_count': items_count,
-                    'minutes_in_cart': random.randint(5, 180),
+                    'minutes_in_cart': self._rng.randint(5, 180),
                     'recovery_email_sent': recovery_email_sent,
                     'recovery_email_opened': recovery_email_opened,
                     'recovery_email_clicked': recovery_email_clicked,
                     'is_recovered': is_recovered,
-                    'recovery_date_key': date_info['date_key'] + random.randint(1, 7) if is_recovered else None,
-                    'recovery_revenue': cart_value * random.uniform(0.7, 1.0) if is_recovered else 0.0,
-                    'abandonment_stage': random.choice(['cart', 'shipping', 'payment']),
+                    'recovery_date_key': date_info['date_key'] + self._rng.randint(1, 7) if is_recovered else None,
+                    'recovery_revenue': cart_value * self._rng.uniform(0.7, 1.0) if is_recovered else 0.0,
+                    'abandonment_stage': self._rng.choice(['cart', 'shipping', 'payment']),
                     'suspected_reason': suspected_reason,
-                    # NEW COLUMNS - Feature: 001-i-want-to
                     'low_inventory_trigger': low_inventory_trigger,
                     'inventory_constrained_items': inventory_constrained_items,
-                    # Standard columns
-                    'source_system': 'SHOPIFY_MOBILE_APP',
+                    'source_system': SOURCE_SYSTEMS['cart_abandonment'],
                     'etl_timestamp': dt.now()
                 }
                 abandonment_data.append(abandonment_record)
@@ -725,8 +678,8 @@ class FactGenerator:
         
         logger.info(f"Created cart abandonment fact table with {len(abandonment_data):,} records")
 
-    def create_stockout_events(self):
-        """Create and populate stockout events fact table - Feature: 001-i-want-to"""
+    def create_stockout_events(self) -> None:
+        """Create and populate stockout events fact table."""
         logger.info("Generating stockout events fact table...")
 
         if not self.inventory_manager:
@@ -759,42 +712,35 @@ class FactGenerator:
 
         logger.info(f"Created stockout events table with {len(stockout_events):,} events")
 
-    def create_demand_forecast_fact(self):
-        """Create and populate demand forecast fact table"""
+    def create_demand_forecast_fact(self) -> None:
+        """Create and populate demand forecast fact table."""
         logger.info("Generating demand forecast fact table...")
         
-        forecast_data = []
+        forecast_data: List[Dict[str, Any]] = []
         forecast_id = 1
 
-        # Generate forecasts for last 30 days and next 30 days
         forecast_dates = self.date_keys[-30:] + self.date_keys[:30] if len(self.date_keys) > 60 else self.date_keys
 
-        for date_info in forecast_dates[-30:]:  # Limited for demo
-            # Generate forecasts for top products and key locations
-            for product in self.product_keys[:100]:  # Top 100 products
-                for location in self.store_locations[:5]:  # Top 5 stores
-                    # Base forecast
-                    base_demand = random.randint(10, 100)
+        for date_info in forecast_dates[-30:]:
+            for product in self.product_keys[:100]:
+                for location in self.store_locations[:5]:
+                    base_demand = self._rng.randint(10, 100)
                     forecast_quantity = float(int(self._apply_seasonality_multiplier(base_demand, date_info)))
                     
-                    # Confidence intervals
                     confidence_level = 0.95
                     margin = forecast_quantity * 0.2
-                    confidence_lower = 0.0 if int(forecast_quantity - margin) < 0 else float(int(forecast_quantity - margin))
+                    confidence_lower = max(0.0, float(int(forecast_quantity - margin)))
                     confidence_upper = float(int(forecast_quantity + margin))
                     
-                    # Actual demand (for historical dates)
                     if date_info['calendar_date'] < dt.now().date():
-                        # Add some noise to forecast for actuals
-                        actual_quantity_calc = int(forecast_quantity + random.gauss(0, forecast_quantity * 0.15))
-                        actual_quantity = 0.0 if actual_quantity_calc < 0 else float(actual_quantity_calc)
+                        actual_quantity_calc = int(forecast_quantity + self._rng.gauss(0, forecast_quantity * 0.15))
+                        actual_quantity = max(0.0, float(actual_quantity_calc))
                         actual_revenue = float(actual_quantity) * float(product['base_price'])
                         
-                        # Calculate accuracy metrics
                         if actual_quantity > 0:
                             diff = forecast_quantity - actual_quantity
-                            mape = (diff if diff >= 0 else -diff) / actual_quantity * 100
-                            forecast_accuracy = 0.0 if (100 - mape) < 0 else (100 - mape)
+                            mape = abs(diff) / actual_quantity * 100
+                            forecast_accuracy = max(0.0, 100 - mape)
                             bias = (forecast_quantity - actual_quantity) / actual_quantity * 100
                         else:
                             mape = 0.0
@@ -825,7 +771,7 @@ class FactGenerator:
                         'bias': bias,
                         'model_version': 'v2.3.1',
                         'model_type': 'ensemble_xgboost_lstm',
-                        'source_system': 'ML_PLATFORM_PLANNING',
+                        'source_system': SOURCE_SYSTEMS['forecast'],
                         'etl_timestamp': dt.now()
                     }
                     forecast_data.append(forecast_record)

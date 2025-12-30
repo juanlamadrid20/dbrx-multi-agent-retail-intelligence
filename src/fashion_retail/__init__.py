@@ -12,7 +12,7 @@ Configuration:
         config = load_config("config.small.yaml")  # Load a different preset
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # Import config classes (no PySpark dependency)
 from .config import FashionRetailConfig, get_config, get_small_config, load_config
@@ -25,14 +25,22 @@ __all__ = [
     "get_config",
     "get_small_config",  # Deprecated, use load_config("config.small.yaml")
     "TableCleanup",
+    # Constants
+    "DIMENSION_TABLES",
+    "FACT_TABLES",
+    "AGGREGATE_TABLES",
+    "ALL_TABLES",
 ]
 
 def __getattr__(name):
-    """Lazy import for PySpark-dependent modules."""
+    """Lazy import for PySpark-dependent modules and constants."""
     if name == "FashionRetailDataGenerator":
         from .main import FashionRetailDataGenerator
         return FashionRetailDataGenerator
     elif name == "TableCleanup":
         from .cleanup import TableCleanup
         return TableCleanup
+    elif name in ("DIMENSION_TABLES", "FACT_TABLES", "AGGREGATE_TABLES", "ALL_TABLES"):
+        from . import constants
+        return getattr(constants, name)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
