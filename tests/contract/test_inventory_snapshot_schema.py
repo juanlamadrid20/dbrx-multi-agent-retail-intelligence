@@ -1,6 +1,6 @@
 """
-Contract test for gold_inventory_fact table schema
-Validates schema compliance with specs/001-i-want-to/contracts/gold_inventory_fact.json
+Contract test for gold_inventory_fact table schema.
+Schema contract: tests/contract/fixtures/gold_inventory_fact.json
 
 This test MUST FAIL initially (new columns don't exist yet).
 After implementation of T016, this test should PASS.

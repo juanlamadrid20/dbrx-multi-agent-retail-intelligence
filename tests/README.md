@@ -73,4 +73,4 @@ Example:
 2. Implement features to make tests PASS
 3. Run full test suite to verify no regressions
 
-See `specs/001-i-want-to/tasks.md` for test execution order.
+See tests/contract/fixtures/ for schema contracts.

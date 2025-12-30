@@ -1,0 +1,250 @@
+{
+  "table_name": "gold_sales_fact",
+  "catalog": "juan_dev",
+  "schema": "retail",
+  "description": "Sales transaction fact table with inventory validation",
+  "table_type": "FACT",
+  "grain": "Transaction Line Item",
+  "fields": [
+    {
+      "name": "transaction_id",
+      "type": "STRING",
+      "nullable": false,
+      "description": "Unique transaction identifier"
+    },
+    {
+      "name": "line_item_id",
+      "type": "STRING",
+      "nullable": false,
+      "description": "Unique line item identifier"
+    },
+    {
+      "name": "customer_key",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Foreign key to customer dimension"
+    },
+    {
+      "name": "product_key",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Foreign key to product dimension"
+    },
+    {
+      "name": "date_key",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Transaction date in YYYYMMDD format"
+    },
+    {
+      "name": "time_key",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Transaction time in HHMM format"
+    },
+    {
+      "name": "location_key",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Foreign key to location dimension"
+    },
+    {
+      "name": "channel_key",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Foreign key to channel dimension"
+    },
+    {
+      "name": "order_number",
+      "type": "STRING",
+      "nullable": false,
+      "description": "Order number grouping line items"
+    },
+    {
+      "name": "pos_terminal_id",
+      "type": "STRING",
+      "nullable": true,
+      "description": "POS terminal ID (store purchases only)"
+    },
+    {
+      "name": "sales_associate_id",
+      "type": "STRING",
+      "nullable": true,
+      "description": "Sales associate ID (store purchases only)"
+    },
+    {
+      "name": "quantity_sold",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Actual quantity sold (may be less than requested due to inventory constraints)",
+      "validation": "quantity_sold > 0",
+      "changed": true
+    },
+    {
+      "name": "quantity_requested",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Quantity customer wanted to purchase",
+      "validation": "quantity_requested >= quantity_sold",
+      "new": true
+    },
+    {
+      "name": "is_inventory_constrained",
+      "type": "BOOLEAN",
+      "nullable": false,
+      "description": "True when quantity_sold < quantity_requested",
+      "validation": "is_inventory_constrained = (quantity_sold < quantity_requested)",
+      "new": true
+    },
+    {
+      "name": "inventory_at_purchase",
+      "type": "INTEGER",
+      "nullable": false,
+      "description": "Available inventory before this purchase",
+      "validation": "inventory_at_purchase >= 0",
+      "new": true
+    },
+    {
+      "name": "unit_price",
+      "type": "DOUBLE",
+      "nullable": false,
+      "description": "Price per unit"
+    },
+    {
+      "name": "discount_amount",
+      "type": "DOUBLE",
+      "nullable": false,
+      "description": "Discount applied"
+    },
+    {
+      "name": "tax_amount",
+      "type": "DOUBLE",
+      "nullable": false,
+      "description": "Tax amount"
+    },
+    {
+      "name": "net_sales_amount",
+      "type": "DOUBLE",
+      "nullable": false,
+      "description": "Total after discount before tax"
+    },
+    {
+      "name": "gross_margin_amount",
+      "type": "DOUBLE",
+      "nullable": false,
+      "description": "Gross margin"
+    },
+    {
+      "name": "is_return",
+      "type": "BOOLEAN",
+      "nullable": false,
+      "description": "True for return transactions"
+    },
+    {
+      "name": "return_restocked_date_key",
+      "type": "INTEGER",
+      "nullable": true,
+      "description": "Date inventory was replenished from return (1-3 days after return date)",
+      "validation": "IF is_return THEN return_restocked_date_key BETWEEN date_key+1 AND date_key+3",
+      "new": true
+    },
+    {
+      "name": "is_exchange",
+      "type": "BOOLEAN",
+      "nullable": false,
+      "description": "True for exchange transactions"
+    },
+    {
+      "name": "is_promotional",
+      "type": "BOOLEAN",
+      "nullable": false,
+      "description": "True for promotional pricing"
+    },
+    {
+      "name": "is_clearance",
+      "type": "BOOLEAN",
+      "nullable": false,
+      "description": "True for clearance pricing"
+    },
+    {
+      "name": "fulfillment_type",
+      "type": "STRING",
+      "nullable": false,
+      "description": "ship, pickup, same_day, in_store"
+    },
+    {
+      "name": "payment_method",
+      "type": "STRING",
+      "nullable": false,
+      "description": "Payment method used"
+    },
+    {
+      "name": "source_system",
+      "type": "STRING",
+      "nullable": false,
+      "description": "Source system identifier"
+    },
+    {
+      "name": "etl_timestamp",
+      "type": "TIMESTAMP",
+      "nullable": false,
+      "description": "ETL processing timestamp"
+    }
+  ],
+  "primary_key": ["line_item_id"],
+  "foreign_keys": [
+    {
+      "columns": ["customer_key"],
+      "references": "gold_customer_dim(customer_key)"
+    },
+    {
+      "columns": ["product_key"],
+      "references": "gold_product_dim(product_key)"
+    },
+    {
+      "columns": ["date_key"],
+      "references": "gold_date_dim(date_key)"
+    },
+    {
+      "columns": ["location_key"],
+      "references": "gold_location_dim(location_key)"
+    },
+    {
+      "columns": ["channel_key"],
+      "references": "gold_channel_dim(channel_key)"
+    }
+  ],
+  "quality_checks": [
+    {
+      "name": "no_overselling",
+      "query": "SELECT COUNT(*) FROM gold_sales_fact WHERE quantity_sold > quantity_requested",
+      "expected": 0
+    },
+    {
+      "name": "inventory_constraint_consistency",
+      "query": "SELECT COUNT(*) FROM gold_sales_fact WHERE (quantity_sold < quantity_requested) <> is_inventory_constrained",
+      "expected": 0
+    },
+    {
+      "name": "return_restock_delay_valid",
+      "query": "SELECT COUNT(*) FROM gold_sales_fact WHERE is_return = TRUE AND (return_restocked_date_key < date_key + 1 OR return_restocked_date_key > date_key + 3)",
+      "expected": 0
+    }
+  ],
+  "version": "2.0",
+  "last_updated": "2025-10-06",
+  "changelog": [
+    {
+      "version": "2.0",
+      "date": "2025-10-06",
+      "changes": [
+        "Added quantity_requested to track customer intent",
+        "Added is_inventory_constrained flag",
+        "Added inventory_at_purchase for audit trail",
+        "Added return_restocked_date_key for return delay tracking",
+        "Updated quantity_sold description to reflect constraint logic"
+      ]
+    }
+  ]
+}
+

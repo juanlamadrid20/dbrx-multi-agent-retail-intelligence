@@ -17,7 +17,8 @@ Design Decisions:
 - Tracks both requested and allocated quantities
 - Returns detailed allocation results for analytics
 
-Feature: specs/001-i-want-to/spec.md (FR-001, FR-002, FR-003, FR-004)
+Requirements: FR-001 (inventory constraints), FR-002 (random allocation), 
+              FR-003 (real-time deduction), FR-004 (quantity_requested tracking)
 """
 
 import random

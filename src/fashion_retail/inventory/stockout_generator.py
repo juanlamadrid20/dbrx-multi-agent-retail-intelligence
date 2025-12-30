@@ -18,7 +18,7 @@ Design Decisions:
 - Peak season detection via date_dim calendar attributes
 - Auto-incrementing stockout_id
 
-Feature: specs/001-i-want-to/spec.md (FR-013, FR-014, FR-015)
+Requirements: FR-013 (stockout events table), FR-014 (lost sales), FR-015 (peak season)
 """
 
 from datetime import datetime, timedelta

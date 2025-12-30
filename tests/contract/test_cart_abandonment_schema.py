@@ -1,6 +1,6 @@
 """
-Contract test for gold_cart_abandonment_fact table schema
-Validates schema compliance with specs/001-i-want-to/contracts/gold_cart_abandonment_fact.json
+Contract test for gold_cart_abandonment_fact table schema.
+Schema contract: tests/contract/fixtures/gold_cart_abandonment_fact.json
 
 This test MUST FAIL initially (new columns don't exist yet).
 After implementation of T018, this test should PASS.

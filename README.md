@@ -1,17 +1,18 @@
 # DBRX Multi-Agent Retail Intelligence
 
-This project provides a comprehensive fashion retail intelligence platform with inventory-aligned synthetic data generation, multi-agent analytics, and Databricks integration.
+A comprehensive fashion retail intelligence platform with inventory-aligned synthetic data generation, multi-agent analytics, and Databricks integration.
 
 ## 📁 Project Structure
 
-- **[00-data/](00-data/)** - Synthetic data generation with inventory alignment
-  - **[README.md](00-data/README.md)** - 📖 **Complete documentation, data model, and scaling guide**
-- **[10-genie-rooms/](10-genie-rooms/)** - Databricks Genie spaces for customer behavior and inventory analytics
-- **[20-agent-brick/](20-agent-brick/)** - Multi-agent system setup and orchestration
-- **[50-analysis/](50-analysis/)** - Cross-domain analysis notebooks
-- **[specs/](specs/)** - Feature specifications and implementation plans
-- **[src/](src/)** - Python package for fashion retail data generation
-- **[tests/](tests/)** - Contract and unit tests
+| Folder | Description |
+|--------|-------------|
+| **[00-data/](00-data/)** | Synthetic data generation with inventory alignment. [📖 Full docs](00-data/README.md) |
+| **[10-genie-rooms/](10-genie-rooms/)** | Databricks Genie spaces for customer behavior & inventory analytics |
+| **[20-agent-brick/](20-agent-brick/)** | Agent Bricks: Knowledge Assistant + Multi-Agent Supervisor setup |
+| **[30-mosaic-tool-calling-agent/](30-mosaic-tool-calling-agent/)** | Multi-tool calling agent using LangChain & GenieAgent |
+| **[docs/](docs/)** | Demo scripts and presentation slides |
+| **[src/](src/)** | Python package for fashion retail data generation |
+| **[tests/](tests/)** | Contract and unit tests |
 
 ## 🚀 Quick Start
 
@@ -22,6 +23,7 @@ For complete setup instructions, data model details, scaling recommendations, an
 - **Inventory-Aligned Data Generation**: Sales respect real-time inventory constraints
 - **Stockout Analytics**: Track lost sales and revenue impact
 - **Multi-Agent Intelligence**: Customer behavior and inventory optimization agents
+- **Multi-Tool Calling Agent**: Natural language queries across Genie spaces
 - **Scalable Architecture**: From 10 customers to 2M+ enterprise scale
 - **Databricks Integration**: Unity Catalog, Delta Lake, and Genie spaces
 
@@ -32,27 +34,44 @@ The platform generates a star schema with:
 - **6 Fact Tables** (sales, inventory, customer events, cart abandonment, demand forecasts, stockout events)
 - **Inventory-Aligned Features** for realistic business scenarios
 
+## 🤖 Agent Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Multi-Agent Supervisor                                              │
+├─────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────┐ │
+│  │  Customer Reviews   │  │ Customer Behavior   │  │  Inventory  │ │
+│  │  Knowledge Agent    │  │ Genie Space         │  │ Genie Space │ │
+│  └─────────────────────┘  └─────────────────────┘  └─────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+| Agent | Type | Domain |
+|-------|------|--------|
+| Customer Reviews | Knowledge Assistant | Qualitative voice of customer |
+| Customer Behavior | Genie Space | Quantitative customer analytics |
+| Inventory Operations | Genie Space | Supply chain intelligence |
+
 ## 🔧 Technologies
 
 - **Databricks** - Data platform and compute
 - **Delta Lake** - Data storage and versioning
 - **Unity Catalog** - Data governance
 - **Genie Spaces** - Natural language analytics
+- **LangChain** - Agent orchestration
+- **MLflow** - Model tracking and deployment
 - **Python** - Data generation and processing
 - **SQL** - Analytics and validation
 
 ## 📖 Documentation
 
-**👉 [Start here: Complete Documentation](00-data/README.md)**
-
-The unified documentation includes:
-- Installation and quick start guide
-- Complete data model with ERD
-- Scaling from test to enterprise volumes
-- Validation tests and procedures
-- Performance optimization
-- Use cases and example queries
-- Troubleshooting guide
+| Resource | Description |
+|----------|-------------|
+| [00-data/README.md](00-data/README.md) | Complete data platform documentation |
+| [20-agent-brick/README.md](20-agent-brick/README.md) | Agent Bricks deployment guides |
+| [30-mosaic-tool-calling-agent/README.tool-calling-agent.md](30-mosaic-tool-calling-agent/README.tool-calling-agent.md) | Multi-tool agent architecture |
+| [docs/DEMO_SCRIPT_QUESTIONS.md](docs/DEMO_SCRIPT_QUESTIONS.md) | Demo script and sample questions |
 
 ## 🏗️ Status
 
@@ -61,4 +80,4 @@ The unified documentation includes:
 ---
 
 **Project Owner:** Juan Lamadrid  
-**Last Updated:** 2025-01-27
+**Last Updated:** 2025-12-29

@@ -18,7 +18,7 @@ Design Decisions:
 - Stockout tracking with start/end dates
 - Support for batch processing (50K record batches)
 
-Feature: specs/001-i-want-to/spec.md (FR-001 through FR-015)
+Requirements: FR-001 through FR-015 (inventory-aligned data generation)
 """
 
 import random

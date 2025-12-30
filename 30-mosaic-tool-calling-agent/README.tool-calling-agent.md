@@ -183,7 +183,7 @@ See `notebooks/README.tool-calling-agent.md` for detailed architecture and troub
 
 ## Functional Requirements
 
-This agent implements all functional requirements from [spec.md](../specs/002-multi-tool-calling/spec.md):
+This agent implements all functional requirements:
 
 - **FR-001**: Accept natural language questions
 - **FR-002**: Identify relevant domains
@@ -252,11 +252,6 @@ open htmlcov/index.html
 
 ## Related Documentation
 
-- **Feature Specification**: [../specs/002-multi-tool-calling/spec.md](../specs/002-multi-tool-calling/spec.md)
-- **Implementation Plan**: [../specs/002-multi-tool-calling/plan.md](../specs/002-multi-tool-calling/plan.md)
-- **Research & Technical Decisions**: [../specs/002-multi-tool-calling/research.md](../specs/002-multi-tool-calling/research.md)
-- **Data Model**: [../specs/002-multi-tool-calling/data-model.md](../specs/002-multi-tool-calling/data-model.md)
-- **Quickstart Guide**: [../specs/002-multi-tool-calling/quickstart.md](../specs/002-multi-tool-calling/quickstart.md)
 - **Customer Behavior Genie**: [../10-genie-rooms/README.genie.customer-behavior.md](../10-genie-rooms/README.genie.customer-behavior.md)
 - **Inventory Genie**: [../10-genie-rooms/README.genie.inventory.md](../10-genie-rooms/README.genie.inventory.md)
 

@@ -1,6 +1,6 @@
 """
-Contract test for gold_stockout_events table schema
-Validates schema compliance with specs/001-i-want-to/contracts/gold_stockout_events.json
+Contract test for gold_stockout_events table schema.
+Schema contract: tests/contract/fixtures/gold_stockout_events.json
 
 This is a NEW table that does not exist yet.
 This test MUST FAIL initially (table doesn't exist).
