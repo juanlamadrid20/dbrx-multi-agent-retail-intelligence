@@ -103,53 +103,46 @@ This agent provides intelligent insights by:
 
 3. Create the agent (no UC Function registration needed):
    ```python
-   # Run notebook: notebooks/02-create-agent.ipynb
+   # Run notebook: notebooks/01-create-agent.ipynb
    # Uses GenieAgent from databricks-langchain (automatic authentication)
    ```
 
 ## Quick Start
 
-### 1. Setup Agent
-Open and run `notebooks/02-create-agent.ipynb` to:
+### 1. Create Agent
+Open and run `notebooks/01-create-agent.ipynb` to:
 - Create multi-agent system with GenieAgent
 - Configure system prompt and conversation management
-- Log agent to MLflow
+- Log agent to MLflow and register to Unity Catalog
 
-**Note:** The previous UC Function registration approach is deprecated. The current implementation uses `GenieAgent` from `databricks-langchain` which handles authentication automatically. See `notebooks/README.tool-calling-agent.md` for details.
+### 2. Test & Evaluate Agent
+Open `notebooks/02-test-evaluate-agent.ipynb` for:
 
-### 2. Test Agent
-Open `notebooks/03-test-agent.ipynb` for interactive testing:
+**Part 1 - Manual Tests:**
+- Single-domain queries (FR-001, FR-003)
+- Multi-domain queries (FR-005, FR-006)
+- Context-aware follow-ups (FR-011)
+- Error handling (FR-008)
+- Performance validation (FR-012)
 
-```python
-# Simple query
-response = query_agent("What are the top cart abandonment products?")
-print(response['answer'])
-
-# Multi-domain query
-response = query_agent(
-    "What products are frequently abandoned in carts and do we have inventory issues?"
-)
-print(response['answer'])
-
-# Context-aware follow-up
-session_id = conversation_manager.start_conversation()
-response1 = query_agent("What are the top cart abandonment products?", session_id)
-response2 = query_agent("What about their demographics?", session_id)  # Uses context
-```
+**Part 2 - MLflow Evaluation:**
+- Run evaluation dataset from `evaluation/eval_dataset.json`
+- Calculate metrics (relevance, source citation, response time)
+- Log results to MLflow
 
 ### 3. Deploy Agent
-Open `notebooks/04-deploy-agent.ipynb` to:
+Open `notebooks/03-deploy-agent.ipynb` to:
 - Deploy agent to Databricks Model Serving
 - Test deployed endpoint
 - Monitor performance
 
 ## Notebook Execution Order
 
-1. **02-create-agent.ipynb** - Create multi-agent system with GenieAgent
-2. **03-test-agent.ipynb** - Interactive testing and validation
-3. **04-deploy-agent.ipynb** - Model Serving deployment
+1. **01-create-agent.ipynb** - Create multi-agent system with GenieAgent, log to MLflow, register to UC
+2. **02-test-evaluate-agent.ipynb** - Manual tests + MLflow evaluation using `evaluation/eval_dataset.json`
+3. **03-deploy-agent.ipynb** - Model Serving deployment
 
-**Note:** The previous `01-register-uc-functions.ipynb` notebook is deprecated. The current implementation uses `GenieAgent` from `databricks-langchain` which provides automatic authentication and doesn't require UC Function registration.
+**Note:** The implementation uses `GenieAgent` from `databricks-langchain` which provides automatic authentication and doesn't require UC Function registration.
 
 ## Architecture
 
@@ -220,10 +213,9 @@ open htmlcov/index.html
 ```
 30-mosaic-tool-calling-agent/
 ├── notebooks/
-│   ├── 02-create-agent.ipynb          # Create multi-agent system with GenieAgent
-│   ├── 03-test-agent.ipynb             # Interactive testing and validation
-│   └── 04-deploy-agent.ipynb           # Model Serving deployment
-│   └── README.tool-calling-agent.md    # Detailed notebook documentation
+│   ├── 01-create-agent.ipynb           # Create multi-agent system, log to MLflow, register to UC
+│   ├── 02-test-evaluate-agent.ipynb    # Manual tests + MLflow evaluation
+│   └── 03-deploy-agent.ipynb           # Model Serving deployment
 ├── src/
 │   ├── tools/
 │   │   ├── __init__.py
