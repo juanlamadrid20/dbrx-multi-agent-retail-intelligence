@@ -2,9 +2,29 @@ bundle:
   name: dbrx-multi-agent-retail-intelligence
 
 resources:
+  pipelines:
+    medallion_streaming_pipeline:
+      name: "retail-intelligence-medallion-pipeline"
+      catalog: juan_dev
+      schema: retail
+      development: true
+      continuous: false
+      channel: CURRENT
+      serverless: true
+      libraries:
+        - notebook:
+            path: ./40-medallion-pipeline/pipelines/bronze_pipeline.py
+        - notebook:
+            path: ./40-medallion-pipeline/pipelines/silver_pipeline.py
+        - notebook:
+            path: ./40-medallion-pipeline/pipelines/gold_pipeline.py
+      configuration:
+        pipelines.reset.allowed: "false"
+        bundle.file_path: "${workspace.file_path}"
+
   jobs:
     fashion_retail_data_generation:
-      name: "Fashion Retail Data Generation"
+      name: "retail-intelligence-data-generation"
       tasks:
         - task_key: generate_data
           notebook_task:
@@ -15,8 +35,32 @@ resources:
         on_failure:
           - ${workspace.current_user.userName}
     
+    fashion_retail_reviews:
+      name: "retail-intelligence-reviews-generation"
+      tasks:
+        - task_key: generate_reviews
+          notebook_task:
+            notebook_path: ./00-data/01-create-reviews.ipynb
+            source: WORKSPACE
+          timeout_seconds: 1800
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+
+    fashion_retail_reviews_analysis:
+      name: "retail-intelligence-reviews-analysis"
+      tasks:
+        - task_key: analyze_reviews
+          notebook_task:
+            notebook_path: ./00-data/02-reviews-analysis.ipynb
+            source: WORKSPACE
+          timeout_seconds: 900
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+
     fashion_retail_cleanup:
-      name: "Fashion Retail Table Cleanup"
+      name: "retail-intelligence-data-cleanup"
       tasks:
         - task_key: cleanup_tables
           notebook_task:

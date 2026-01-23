@@ -1,0 +1,118 @@
+# =============================================================================
+# Medallion Pipeline Configuration
+# =============================================================================
+#
+# Configuration for the Bronze-Silver-Gold streaming pipeline using
+# Spark Declarative Pipelines (SDP) with Auto Loader.
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Unity Catalog Configuration
+# -----------------------------------------------------------------------------
+
+catalog: juan_dev
+schema: retail
+
+# -----------------------------------------------------------------------------
+# Volume Paths (Flat Structure - No Partitioning)
+# -----------------------------------------------------------------------------
+
+volumes:
+  base_path: /Volumes/juan_dev/retail/data
+  checkpoint_path: /Volumes/juan_dev/retail/checkpoints
+  
+  # Source-specific paths (flat, no date partitions)
+  sources:
+    pos: /Volumes/juan_dev/retail/data/pos
+    ecommerce: /Volumes/juan_dev/retail/data/ecommerce
+    inventory: /Volumes/juan_dev/retail/data/inventory
+    clickstream: /Volumes/juan_dev/retail/data/clickstream
+    customers: /Volumes/juan_dev/retail/data/customers
+    products: /Volumes/juan_dev/retail/data/products
+
+# -----------------------------------------------------------------------------
+# Event Generator Configuration
+# -----------------------------------------------------------------------------
+
+generators:
+  # POS transactions
+  pos:
+    batch_size: 100          # Transactions per batch
+    interval_seconds: 60     # Generate every 60 seconds
+    stores:
+      - NYC-001
+      - NYC-002
+      - LA-001
+      - LA-002
+      - CHI-001
+      - SF-001
+      - MIA-001
+      - BOS-001
+      - SEA-001
+      - DEN-001
+
+  # E-commerce orders  
+  ecommerce:
+    batch_size: 50
+    interval_seconds: 60
+    channels:
+      - web
+      - mobile_app
+      - mobile_web
+
+  # Inventory movements
+  inventory:
+    batch_size: 30
+    interval_seconds: 300    # Every 5 minutes
+    movement_types:
+      - receipt
+      - sale_deduction
+      - adjustment
+      - transfer
+      - return
+
+  # Clickstream events (high volume)
+  clickstream:
+    batch_size: 500
+    interval_seconds: 10     # Every 10 seconds
+    event_types:
+      - page_view
+      - product_view
+      - search
+      - add_to_cart
+      - remove_from_cart
+      - checkout_start
+      - checkout_complete
+      - filter_apply
+      - size_guide_view
+
+  # Customer records (low frequency)
+  customers:
+    batch_size: 10
+    interval_seconds: 300
+
+  # Product catalog (low frequency)
+  products:
+    batch_size: 5
+    interval_seconds: 600
+
+# -----------------------------------------------------------------------------
+# Auto Loader Configuration
+# -----------------------------------------------------------------------------
+
+autoloader:
+  format: json
+  infer_column_types: true
+  schema_evolution_mode: addNewColumns
+  max_files_per_trigger: 100
+
+# -----------------------------------------------------------------------------
+# Pipeline Settings
+# -----------------------------------------------------------------------------
+
+pipeline:
+  name: retail-intelligence-medallion-pipeline
+  development: true
+  continuous: false
+  channel: PREVIEW

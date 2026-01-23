@@ -14,9 +14,6 @@ Configuration:
 
 __version__ = "1.1.0"
 
-# Import config classes (no PySpark dependency)
-from .config import FashionRetailConfig, get_config, get_small_config, load_config
-
 # Main classes with PySpark dependencies - import on demand
 __all__ = [
     "FashionRetailDataGenerator",
@@ -30,10 +27,12 @@ __all__ = [
     "FACT_TABLES",
     "AGGREGATE_TABLES",
     "ALL_TABLES",
+    # Business rules (shared with streaming generators)
+    "business_rules",
 ]
 
 def __getattr__(name):
-    """Lazy import for PySpark-dependent modules and constants."""
+    """Lazy import for all modules to avoid yaml dependency at import time."""
     if name == "FashionRetailDataGenerator":
         from .main import FashionRetailDataGenerator
         return FashionRetailDataGenerator
@@ -43,4 +42,11 @@ def __getattr__(name):
     elif name in ("DIMENSION_TABLES", "FACT_TABLES", "AGGREGATE_TABLES", "ALL_TABLES"):
         from . import constants
         return getattr(constants, name)
+    elif name == "business_rules":
+        from . import business_rules
+        return business_rules
+    elif name in ("FashionRetailConfig", "get_config", "get_small_config", "load_config"):
+        # Lazy import config to avoid yaml dependency unless actually needed
+        from . import config
+        return getattr(config, name)
     raise AttributeError(f"module '{__name__}' has no attribute '{name}'")

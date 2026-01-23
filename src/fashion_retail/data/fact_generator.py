@@ -23,6 +23,12 @@ from ..constants import (
     MONTHLY_SEASONALITY, SEGMENT_DISCOUNT_RANGES, CUSTOMER_SEGMENTS,
     SOURCE_SYSTEMS, MAX_RECORDS_BEFORE_WRITE,
 )
+# Import shared business rules (also available for streaming generators)
+from ..business_rules.seasonality import apply_seasonality_multiplier, SeasonalityContext
+from ..business_rules.pricing import (
+    calculate_discount, PricingContext, get_segment_config,
+    get_items_per_basket, get_return_probability
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +121,9 @@ class FactGenerator:
     def _apply_seasonality_multiplier(self, base_value: float, date_info: Dict) -> float:
         """Apply seasonality to a base value.
         
+        Uses shared business_rules.seasonality module for consistent logic
+        between batch and streaming data generation.
+        
         Args:
             base_value: Base numeric value to adjust
             date_info: Dictionary with date attributes (is_peak_season, is_sale_period, etc.)
@@ -122,23 +131,8 @@ class FactGenerator:
         Returns:
             Adjusted value with seasonality multipliers applied
         """
-        multiplier = 1.0
-        
-        # Seasonal multipliers
-        if date_info['is_peak_season']:
-            multiplier *= 1.5
-        if date_info['is_sale_period']:
-            multiplier *= 1.3
-        if date_info['is_holiday']:
-            multiplier *= 1.8
-        if date_info['is_weekend']:
-            multiplier *= 1.2
-        
-        # Monthly patterns from constants
-        month = int(str(date_info['date_key'])[4:6])
-        multiplier *= MONTHLY_SEASONALITY.get(month, 1.0)
-        
-        return base_value * multiplier
+        # Delegate to shared business rules module
+        return apply_seasonality_multiplier(base_value, date_info)
     
     def create_sales_fact(self) -> None:
         """Create and populate sales fact table."""
