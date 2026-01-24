@@ -38,11 +38,11 @@ except Exception as e:
 
 # COMMAND ----------
 
-# Add generators to path
+# Add 00-data to path for generators and master_data
 import sys
 notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
 repo_root = "/Workspace" + "/".join(notebook_path.split("/")[:-2])
-sys.path.insert(0, repo_root)
+sys.path.insert(0, f"{repo_root}/00-data")
 
 from generators.pos_generator import POSEventGenerator
 
@@ -67,7 +67,7 @@ print(f"✅ Generated test data: {file_path}")
 # MAGIC 2. Create Pipeline with:
 # MAGIC    - Name: `retail-bronze-test`
 # MAGIC    - Target: `juan_dev.retail`
-# MAGIC    - Notebook: `40-medallion-pipeline/pipelines/bronze_pipeline.py`
+# MAGIC    - Notebook: `03-medallion-pipeline/pipelines/bronze_pipeline.py`
 # MAGIC 
 # MAGIC **Option B: Via databricks.yml (recommended for production)**
 # MAGIC See the databricks.yml configuration below.
@@ -90,7 +90,7 @@ print(f"✅ Generated test data: {file_path}")
 # MAGIC       channel: "PREVIEW"
 # MAGIC       libraries:
 # MAGIC         - notebook:
-# MAGIC             path: ./40-medallion-pipeline/pipelines/bronze_pipeline.py
+# MAGIC             path: ./03-medallion-pipeline/pipelines/bronze_pipeline.py
 # MAGIC       configuration:
 # MAGIC         volume_base: "/Volumes/juan_dev/retail/data"
 # MAGIC         checkpoint_base: "/Volumes/juan_dev/retail/checkpoints"
@@ -224,7 +224,7 @@ print("""
 ║  1. Create a DLT Pipeline in Databricks UI:                      ║
 ║     - Name: retail-bronze-test                                   ║
 ║     - Target: juan_dev.retail                                    ║
-║     - Notebook: 40-medallion-pipeline/pipelines/bronze_pipeline  ║
+║     - Notebook: 03-medallion-pipeline/pipelines/bronze_pipeline  ║
 ║                                                                  ║
 ║  2. Run the pipeline (triggered mode)                            ║
 ║                                                                  ║

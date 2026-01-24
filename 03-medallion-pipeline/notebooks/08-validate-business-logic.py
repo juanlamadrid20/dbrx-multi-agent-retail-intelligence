@@ -34,19 +34,16 @@ SCHEMA = "retail"
 import sys
 import os
 
-# Get the workspace root (assumes notebook is in 40-medallion-pipeline/notebooks/)
-notebook_path = os.getcwd()
-if "40-medallion-pipeline" in notebook_path:
-    workspace_root = notebook_path.split("40-medallion-pipeline")[0]
-else:
-    # Fallback for Databricks workspace
-    workspace_root = "/Workspace/Users/juan.lamadrid@databricks.com/ml/agent-bricks/multi-agent-retail-intelligence/files/"
+# Get workspace root from Databricks notebook path
+notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+repo_root = "/Workspace" + "/".join(notebook_path.split("/")[:-2])
 
-# Add paths
-sys.path.insert(0, os.path.join(workspace_root, "40-medallion-pipeline"))
-sys.path.insert(0, os.path.join(workspace_root, "src"))
+# Add paths for generators (00-data), pipeline config (03-medallion-pipeline), and src
+sys.path.insert(0, f"{repo_root}/00-data")  # for generators and master_data
+sys.path.insert(0, f"{repo_root}/03-medallion-pipeline")  # for config
+sys.path.insert(0, f"{repo_root}/src")  # for business_rules
 
-print(f"Workspace root: {workspace_root}")
+print(f"Repository root: {repo_root}")
 print(f"Python path includes: {sys.path[:3]}")
 
 # COMMAND ----------
@@ -287,7 +284,7 @@ print("""
 ║  │                                                               ║
 ║  Used By:                                                        ║
 ║  ├── Batch: src/fashion_retail/data/fact_generator.py            ║
-║  └── Streaming: 40-medallion-pipeline/generators/                ║
+║  └── Streaming: 03-medallion-pipeline/generators/                ║
 ║                                                                  ║
 ║  Verified Patterns:                                              ║
 ║  ├── Segment distribution matches expected probabilities         ║

@@ -10,6 +10,12 @@
 # MAGIC 4. Verify bronze pipeline can ingest all sources
 
 # COMMAND ----------
+# MAGIC %load_ext autoreload
+# MAGIC %autoreload 2
+# Enables autoreload; learn more at https://docs.databricks.com/en/files/workspace-modules.html#autoreload-for-python-modules
+# To disable autoreload; run %autoreload 0
+
+# COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## Configuration
@@ -19,9 +25,12 @@
 CATALOG = "juan_dev"
 SCHEMA = "retail"
 
-# Add generators to path
+# Add 00-data directory to path for generators and master_data
 import sys
-sys.path.append("/Workspace/Users/juan.lamadrid@databricks.com/ml/agent-bricks/multi-agent-retail-intelligence/files/40-medallion-pipeline")
+import os
+notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+data_dir = "/Workspace" + "/".join(notebook_path.split("/")[:-1])
+sys.path.insert(0, data_dir)
 
 # COMMAND ----------
 

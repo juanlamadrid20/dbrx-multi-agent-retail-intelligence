@@ -17,16 +17,12 @@
 import sys
 import os
 
-# Add the generators package to path
+# Add 00-data directory to path for generators and master_data
 notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-repo_root = "/Workspace" + "/".join(notebook_path.split("/")[:-2])
-generators_path = f"{repo_root}/generators"
+data_dir = "/Workspace" + "/".join(notebook_path.split("/")[:-1])
+sys.path.insert(0, data_dir)
 
-# For local development, use relative path
-sys.path.insert(0, generators_path)
-sys.path.insert(0, f"{repo_root}")
-
-print(f"Added to path: {generators_path}")
+print(f"Added to path: {data_dir}")
 
 # COMMAND ----------
 

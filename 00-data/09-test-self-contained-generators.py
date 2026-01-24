@@ -5,7 +5,7 @@
 # MAGIC This notebook tests the new self-contained generator architecture.
 # MAGIC 
 # MAGIC **Key Changes:**
-# MAGIC - Generators use `config/master_data.py` as the single source of truth
+# MAGIC - Generators use `master_data.py` as the single source of truth
 # MAGIC - No database connectivity required
 # MAGIC - Gold dimension tables derived from master_data (not prerequisites)
 # MAGIC - True raw → bronze → silver → gold flow
@@ -19,17 +19,37 @@
 
 # COMMAND ----------
 
+# MAGIC %pip install pyyaml --quiet
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Setup
 
 # COMMAND ----------
 
-CATALOG = "juan_dev"
-SCHEMA = "retail"
-
-# Add the pipeline directory to path
+# Add 00-data directory to path for generators and master_data
 import sys
-sys.path.insert(0, "/Workspace/Users/juan.lamadrid@databricks.com/ml/agent-bricks/multi-agent-retail-intelligence/files/40-medallion-pipeline")
+import os
+notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+data_dir = "/Workspace" + "/".join(notebook_path.split("/")[:-1])
+sys.path.insert(0, data_dir)
+
+# Also add pipeline config path for get_catalog, get_schema, etc.
+repo_root = "/Workspace" + "/".join(notebook_path.split("/")[:-2])
+sys.path.insert(0, f"{repo_root}/03-medallion-pipeline")
+
+# Load centralized configuration
+from config import get_catalog, get_schema, get_volume_path, get_generator_config, get_pipeline_config
+
+# Get catalog/schema from config (can be overridden)
+CATALOG = get_catalog()
+SCHEMA = get_schema()
+
+print(f"📋 Pipeline Configuration Loaded")
+print(f"   Catalog: {CATALOG}")
+print(f"   Schema: {SCHEMA}")
+print(f"   Volume Base: {get_pipeline_config().get('volumes', {}).get('base_path', 'N/A')}")
 
 # COMMAND ----------
 
@@ -40,7 +60,7 @@ sys.path.insert(0, "/Workspace/Users/juan.lamadrid@databricks.com/ml/agent-brick
 
 # COMMAND ----------
 
-from config.master_data import (
+from master_data import (
     # Products
     SKUS, PRODUCT_CATALOG, ACTIVE_SKUS,
     CATEGORIES, BRANDS,
@@ -141,28 +161,33 @@ from generators import (
     create_clickstream_generator
 )
 
-# Create generators - NO SPARK OR DB NEEDED
-pos_gen = create_pos_generator(catalog=CATALOG, schema=SCHEMA, batch_size=50)
-ecom_gen = create_ecommerce_generator(catalog=CATALOG, schema=SCHEMA, batch_size=50)
-inv_gen = create_inventory_generator(catalog=CATALOG, schema=SCHEMA, batch_size=50)
-click_gen = create_clickstream_generator(catalog=CATALOG, schema=SCHEMA, batch_size=50)
+# Create generators - uses pipeline_config.yaml for defaults (NO SPARK OR DB NEEDED)
+# When no args provided, batch_size comes from config
+pos_gen = create_pos_generator()  # Uses config defaults
+ecom_gen = create_ecommerce_generator()
+inv_gen = create_inventory_generator()
+click_gen = create_clickstream_generator()
 
-print("✅ All generators created without database dependency")
+print("✅ All generators created using pipeline_config.yaml")
 print()
-print(f"POS Generator:")
+print(f"POS Generator (batch_size={pos_gen.batch_size}):")
+print(f"  - Volume: {pos_gen.volume_path}")
 print(f"  - Stores: {len(pos_gen.stores)}")
 print(f"  - SKUs: {len(pos_gen.skus)}")
 print(f"  - Customers: {len(pos_gen.customer_ids)}")
 print()
-print(f"E-commerce Generator:")
+print(f"E-commerce Generator (batch_size={ecom_gen.batch_size}):")
+print(f"  - Volume: {ecom_gen.volume_path}")
 print(f"  - Channels: {len(ecom_gen.channels)}")
 print(f"  - SKUs: {len(ecom_gen.skus)}")
 print()
-print(f"Inventory Generator:")
+print(f"Inventory Generator (batch_size={inv_gen.batch_size}):")
+print(f"  - Volume: {inv_gen.volume_path}")
 print(f"  - Locations: {len(inv_gen.location_ids)}")
 print(f"  - SKUs: {len(inv_gen.skus)}")
 print()
-print(f"Clickstream Generator:")
+print(f"Clickstream Generator (batch_size={click_gen.batch_size}):")
+print(f"  - Volume: {click_gen.volume_path}")
 print(f"  - Channels: {len(click_gen.channels)}")
 print(f"  - SKUs: {len(click_gen.skus)}")
 
@@ -226,9 +251,13 @@ print(f"  Device: {click_event['device_type']}")
 
 # COMMAND ----------
 
-VOLUME_BASE = f"/Volumes/{CATALOG}/{SCHEMA}/data"
+# Volume paths come from pipeline_config.yaml
+VOLUME_BASE = get_pipeline_config().get('volumes', {}).get('base_path', f"/Volumes/{CATALOG}/{SCHEMA}/data")
 
-# Write POS events
+print(f"📂 Writing events to: {VOLUME_BASE}")
+print()
+
+# Write POS events (volume path embedded in generator from config)
 pos_file = pos_gen.write_batch_dbutils(dbutils, num_events=100)
 print(f"✅ Wrote 100 POS events to: {pos_file}")
 
@@ -240,7 +269,7 @@ print(f"✅ Wrote 100 e-commerce events to: {ecom_file}")
 inv_file = inv_gen.write_batch_dbutils(dbutils, num_events=100)
 print(f"✅ Wrote 100 inventory events to: {inv_file}")
 
-# Write clickstream events
+# Write clickstream events (higher volume per config)
 click_file = click_gen.write_batch_dbutils(dbutils, num_events=200)
 print(f"✅ Wrote 200 clickstream events to: {click_file}")
 
@@ -275,7 +304,7 @@ for source in sources:
 
 # COMMAND ----------
 
-from config.master_data import (
+from master_data import (
     get_products_for_dimension,
     get_locations_for_dimension,
     get_channels_for_dimension
@@ -305,18 +334,25 @@ for ch in channels:
 
 # COMMAND ----------
 
-print("""
+print(f"""
 ╔══════════════════════════════════════════════════════════════════╗
 ║              SELF-CONTAINED GENERATOR TEST COMPLETE               ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
+║  ✅ Pipeline config loaded from pipeline_config.yaml             ║
 ║  ✅ Master data imports work without Spark                       ║
-║  ✅ Generators initialize without database dependency            ║
+║  ✅ Generators use centralized config                            ║
 ║  ✅ Sample events generated successfully                         ║
 ║  ✅ Events written to volumes                                    ║
 ║  ✅ Dimension data available for gold pipeline                   ║
 ║                                                                  ║
+║  Configuration:                                                  ║
+║  ├── Catalog: {CATALOG:<45} ║
+║  ├── Schema: {SCHEMA:<46} ║
+║  └── Config file: config/pipeline_config.yaml                    ║
+║                                                                  ║
 ║  Architecture Benefits:                                          ║
+║  ├── Centralized config (pipeline_config.yaml)                   ║
 ║  ├── No circular dependency (gold tables not required first)     ║
 ║  ├── Generators work standalone (can test locally)               ║
 ║  ├── Single source of truth (master_data.py)                     ║

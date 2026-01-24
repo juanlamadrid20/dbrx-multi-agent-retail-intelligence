@@ -19,9 +19,11 @@
 CATALOG = "juan_dev"
 SCHEMA = "retail"
 
-# Add generators to path
+# Add 00-data to path for generators and master_data
 import sys
-sys.path.append("/Workspace/Users/juan.lamadrid@databricks.com/ml/agent-bricks/multi-agent-retail-intelligence/files/40-medallion-pipeline")
+notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+repo_root = "/Workspace" + "/".join(notebook_path.split("/")[:-2])
+sys.path.insert(0, f"{repo_root}/00-data")
 
 # COMMAND ----------
 

@@ -118,7 +118,7 @@ display(locations.select("location_id").distinct())
 # MAGIC Add silver_pipeline.py to your DLT pipeline and run it.
 # MAGIC 
 # MAGIC **Pipeline Configuration:**
-# MAGIC - Add notebook: `40-medallion-pipeline/pipelines/silver_pipeline.py`
+# MAGIC - Add notebook: `03-medallion-pipeline/pipelines/silver_pipeline.py`
 # MAGIC - Or create new pipeline with both bronze and silver notebooks
 
 # COMMAND ----------

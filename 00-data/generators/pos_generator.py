@@ -16,13 +16,14 @@ No database connectivity required - enables:
 - Reproducible data generation
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from .base_generator import BaseEventGenerator
 
 # Import master data (single source of truth, no DB dependency)
-from config.master_data import (
+# master_data.py is now at 00-data/ alongside generators/
+from master_data import (
     SKUS, STORE_IDS, CUSTOMER_IDS, PRODUCT_CATALOG,
     CUSTOMER_SEGMENT_MAP, CUSTOMER_SEGMENTS, SEGMENT_DISCOUNT_RANGES,
     get_product_by_sku, get_customer_segment, get_segment_basket_size,
@@ -72,6 +73,10 @@ class POSEventGenerator(BaseEventGenerator):
         volume_path: str,
         batch_size: int = 100,
         random_seed: Optional[int] = None,
+        # Historical backfill parameters
+        historical_days: Optional[int] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
         # Override master data if needed (useful for testing)
         stores: Optional[List[str]] = None,
         skus: Optional[List[str]] = None,
@@ -85,8 +90,11 @@ class POSEventGenerator(BaseEventGenerator):
         
         Args:
             volume_path: Path to pos volume
-            batch_size: Transactions per batch
+            batch_size: Transactions per batch (real-time) or per day (backfill)
             random_seed: Optional seed for reproducibility
+            historical_days: Days of historical data to generate (enables backfill mode)
+            start_date: Explicit start date for backfill
+            end_date: End date for backfill (defaults to today)
             stores: Override store IDs (defaults to master_data.STORE_IDS)
             skus: Override SKUs (defaults to master_data.SKUS)
             customer_ids: Override customer IDs (defaults to master_data.CUSTOMER_IDS)
@@ -94,7 +102,14 @@ class POSEventGenerator(BaseEventGenerator):
             sale_period_override: Force sale period (auto-detect from date if None)
             holiday_override: Force holiday flag (auto-detect from date if None)
         """
-        super().__init__(volume_path, batch_size, random_seed)
+        super().__init__(
+            volume_path, 
+            batch_size, 
+            random_seed,
+            historical_days=historical_days,
+            start_date=start_date,
+            end_date=end_date
+        )
         
         # Use master data or overrides
         self.stores = stores or STORE_IDS
@@ -114,7 +129,9 @@ class POSEventGenerator(BaseEventGenerator):
         """Check if current date is a sale period."""
         if self.sale_period_override is not None:
             return self.sale_period_override
-        return is_sale_period(datetime.now().month)
+        # Use historical date if in backfill mode, otherwise current date
+        check_date = self._current_historical_date or datetime.now()
+        return is_sale_period(check_date.month)
     
     def _get_customer_segment(self, customer_id: Optional[str]) -> str:
         """Get segment for customer ID from master data."""
@@ -207,23 +224,35 @@ class POSEventGenerator(BaseEventGenerator):
 
 
 def create_pos_generator(
-    catalog: str = "juan_dev",
-    schema: str = "retail",
+    catalog: Optional[str] = None,
+    schema: Optional[str] = None,
     **kwargs
 ) -> POSEventGenerator:
     """
-    Create a POS generator using master data.
+    Create a POS generator using master data and pipeline config.
     
     No Spark or database connection required.
     
     Args:
-        catalog: Unity Catalog name (for volume path)
-        schema: Schema name (for volume path)
+        catalog: Unity Catalog name (defaults to config)
+        schema: Schema name (defaults to config)
         **kwargs: Additional arguments for POSEventGenerator
         
     Returns:
         Configured POSEventGenerator instance
     """
-    volume_path = f"/Volumes/{catalog}/{schema}/data/pos"
+    from config import get_catalog, get_schema, get_volume_path, get_generator_config
+    
+    # Use config values if not explicitly provided
+    catalog = catalog or get_catalog()
+    schema = schema or get_schema()
+    
+    # Get volume path from config
+    volume_path = get_volume_path('pos')
+    
+    # Get generator-specific config (batch_size, etc.)
+    gen_config = get_generator_config('pos')
+    if 'batch_size' not in kwargs and 'batch_size' in gen_config:
+        kwargs['batch_size'] = gen_config['batch_size']
     
     return POSEventGenerator(volume_path, **kwargs)

@@ -56,7 +56,7 @@ A streaming medallion architecture pipeline using Databricks Spark Declarative P
 ## Directory Structure
 
 ```
-40-medallion-pipeline/
+03-medallion-pipeline/
 ├── README.md                    # This file
 ├── config/
 │   ├── __init__.py
@@ -256,11 +256,11 @@ pipelines:
     continuous: false  # Change to true for 24/7 streaming
     libraries:
       - notebook:
-          path: ./40-medallion-pipeline/pipelines/bronze_pipeline.py
+          path: ./03-medallion-pipeline/pipelines/bronze_pipeline.py
       - notebook:
-          path: ./40-medallion-pipeline/pipelines/silver_pipeline.py
+          path: ./03-medallion-pipeline/pipelines/silver_pipeline.py
       - notebook:
-          path: ./40-medallion-pipeline/pipelines/gold_pipeline.py
+          path: ./03-medallion-pipeline/pipelines/gold_pipeline.py
 ```
 
 ## Testing Steps

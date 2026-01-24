@@ -108,6 +108,23 @@ autoloader:
   max_files_per_trigger: 100
 
 # -----------------------------------------------------------------------------
+# Historical Backfill Configuration
+# -----------------------------------------------------------------------------
+# Use these settings when generating historical data for initial setup or demos.
+# Backfill mode creates data across a date range instead of just current time.
+
+backfill:
+  # Default number of historical days to generate
+  historical_days: 90
+  
+  # Events per day by source (higher than real-time batch_size for data density)
+  events_per_day:
+    pos: 500               # POS transactions per day
+    ecommerce: 200         # E-commerce orders per day  
+    inventory: 100         # Inventory movements per day
+    clickstream: 5000      # Clickstream events per day
+
+# -----------------------------------------------------------------------------
 # Pipeline Settings
 # -----------------------------------------------------------------------------
 

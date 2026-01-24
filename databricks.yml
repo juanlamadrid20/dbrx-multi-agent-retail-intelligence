@@ -13,11 +13,13 @@ resources:
       serverless: true
       libraries:
         - notebook:
-            path: ./40-medallion-pipeline/pipelines/bronze_pipeline.py
+            path: ./00-data/master_data.py
         - notebook:
-            path: ./40-medallion-pipeline/pipelines/silver_pipeline.py
+            path: ./03-medallion-pipeline/pipelines/bronze_pipeline.py
         - notebook:
-            path: ./40-medallion-pipeline/pipelines/gold_pipeline.py
+            path: ./03-medallion-pipeline/pipelines/silver_pipeline.py
+        - notebook:
+            path: ./03-medallion-pipeline/pipelines/gold_pipeline.py
       configuration:
         pipelines.reset.allowed: "false"
         bundle.file_path: "${workspace.file_path}"
@@ -40,7 +42,7 @@ resources:
       tasks:
         - task_key: generate_reviews
           notebook_task:
-            notebook_path: ./00-data/01-create-reviews.ipynb
+            notebook_path: ./01-vector-store/01-create-reviews.ipynb
             source: WORKSPACE
           timeout_seconds: 1800
       email_notifications:
@@ -52,7 +54,7 @@ resources:
       tasks:
         - task_key: analyze_reviews
           notebook_task:
-            notebook_path: ./00-data/02-reviews-analysis.ipynb
+            notebook_path: ./01-vector-store/02-reviews-analysis.ipynb
             source: WORKSPACE
           timeout_seconds: 900
       email_notifications:

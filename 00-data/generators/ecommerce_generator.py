@@ -14,11 +14,13 @@ Uses master_data.py as the single source of truth for reference data.
 No database connectivity required.
 """
 
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from .base_generator import BaseEventGenerator
 
 # Import master data (single source of truth, no DB dependency)
-from config.master_data import (
+# master_data.py is now at 00-data/ alongside generators/
+from master_data import (
     SKUS, CUSTOMER_IDS, PRODUCT_CATALOG, ECOMMERCE_CHANNELS,
     CUSTOMER_SEGMENT_MAP, CUSTOMER_SEGMENTS, SEGMENT_DISCOUNT_RANGES,
     get_customer_segment, get_segment_basket_size, get_segment_discount,
@@ -95,6 +97,10 @@ class EcommerceEventGenerator(BaseEventGenerator):
         volume_path: str,
         batch_size: int = 100,
         random_seed: Optional[int] = None,
+        # Historical backfill parameters
+        historical_days: Optional[int] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
         # Override master data if needed
         skus: Optional[List[str]] = None,
         customer_ids: Optional[List[str]] = None,
@@ -106,14 +112,24 @@ class EcommerceEventGenerator(BaseEventGenerator):
         
         Args:
             volume_path: Path to ecommerce volume
-            batch_size: Orders per batch
+            batch_size: Orders per batch (real-time) or per day (backfill)
             random_seed: Optional seed for reproducibility
+            historical_days: Days of historical data to generate (enables backfill mode)
+            start_date: Explicit start date for backfill
+            end_date: End date for backfill (defaults to today)
             skus: Override SKUs (defaults to master_data.SKUS)
             customer_ids: Override customer IDs (defaults to master_data.CUSTOMER_IDS)
             channels: Override channels (defaults to master_data.ECOMMERCE_CHANNELS)
             sale_period_override: Force sale period (auto-detect if None)
         """
-        super().__init__(volume_path, batch_size, random_seed)
+        super().__init__(
+            volume_path, 
+            batch_size, 
+            random_seed,
+            historical_days=historical_days,
+            start_date=start_date,
+            end_date=end_date
+        )
         
         # Use master data or overrides
         self.skus = skus or SKUS
@@ -130,8 +146,9 @@ class EcommerceEventGenerator(BaseEventGenerator):
         """Check if current date is a sale period."""
         if self.sale_period_override is not None:
             return self.sale_period_override
-        from datetime import datetime
-        return is_sale_period(datetime.now().month)
+        # Use historical date if in backfill mode, otherwise current date
+        check_date = self._current_historical_date or datetime.now()
+        return is_sale_period(check_date.month)
     
     def _get_customer_segment(self, customer_id: str) -> str:
         """Get segment for customer ID from master data."""
@@ -226,23 +243,35 @@ class EcommerceEventGenerator(BaseEventGenerator):
 
 
 def create_ecommerce_generator(
-    catalog: str = "juan_dev",
-    schema: str = "retail",
+    catalog: Optional[str] = None,
+    schema: Optional[str] = None,
     **kwargs
 ) -> EcommerceEventGenerator:
     """
-    Create an e-commerce generator using master data.
+    Create an e-commerce generator using master data and pipeline config.
     
     No Spark or database connection required.
     
     Args:
-        catalog: Unity Catalog name (for volume path)
-        schema: Schema name (for volume path)
+        catalog: Unity Catalog name (defaults to config)
+        schema: Schema name (defaults to config)
         **kwargs: Additional arguments for EcommerceEventGenerator
         
     Returns:
         Configured EcommerceEventGenerator instance
     """
-    volume_path = f"/Volumes/{catalog}/{schema}/data/ecommerce"
+    from config import get_catalog, get_schema, get_volume_path, get_generator_config
+    
+    # Use config values if not explicitly provided
+    catalog = catalog or get_catalog()
+    schema = schema or get_schema()
+    
+    # Get volume path from config
+    volume_path = get_volume_path('ecommerce')
+    
+    # Get generator-specific config (batch_size, etc.)
+    gen_config = get_generator_config('ecommerce')
+    if 'batch_size' not in kwargs and 'batch_size' in gen_config:
+        kwargs['batch_size'] = gen_config['batch_size']
     
     return EcommerceEventGenerator(volume_path, **kwargs)

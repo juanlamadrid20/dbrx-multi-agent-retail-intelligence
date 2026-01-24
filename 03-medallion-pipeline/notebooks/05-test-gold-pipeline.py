@@ -139,7 +139,7 @@ for col_name in existing_cols:
 # MAGIC Add gold_pipeline.py to your DLT pipeline and run it.
 # MAGIC 
 # MAGIC **Pipeline Configuration:**
-# MAGIC - Add notebook: `40-medallion-pipeline/pipelines/gold_pipeline.py`
+# MAGIC - Add notebook: `03-medallion-pipeline/pipelines/gold_pipeline.py`
 
 # COMMAND ----------
 

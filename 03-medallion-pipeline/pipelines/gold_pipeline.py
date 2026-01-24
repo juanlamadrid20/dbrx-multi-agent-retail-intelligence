@@ -57,8 +57,12 @@ from datetime import datetime, timedelta
 CATALOG = "juan_dev"
 SCHEMA = "retail"
 
-# Path to master data module
-MASTER_DATA_PATH = "/Workspace/Users/juan.lamadrid@databricks.com/ml/agent-bricks/multi-agent-retail-intelligence/files/40-medallion-pipeline"
+# Path to 00-data where master_data.py and generators live
+# Note: In DLT pipelines, compute the path dynamically or use bundle paths
+import os
+_notebook_path = spark.conf.get("spark.databricks.notebook.path", "")
+_repo_root = "/".join(_notebook_path.split("/")[:-2])
+MASTER_DATA_PATH = f"/Workspace{_repo_root}/00-data"
 
 # COMMAND ----------
 
@@ -92,7 +96,7 @@ def gold_product_dim():
     """
     import sys
     sys.path.insert(0, MASTER_DATA_PATH)
-    from config.master_data import get_products_for_dimension
+    from master_data import get_products_for_dimension
     
     # Full schema matching original dimension_generator.py
     schema = StructType([
@@ -152,7 +156,7 @@ def gold_location_dim():
     """
     import sys
     sys.path.insert(0, MASTER_DATA_PATH)
-    from config.master_data import get_locations_for_dimension
+    from master_data import get_locations_for_dimension
     
     # Full schema matching original dimension_generator.py
     schema = StructType([
@@ -209,7 +213,7 @@ def gold_channel_dim():
     """
     import sys
     sys.path.insert(0, MASTER_DATA_PATH)
-    from config.master_data import get_channels_for_dimension
+    from master_data import get_channels_for_dimension
     
     schema = StructType([
         StructField("channel_key", IntegerType(), False),
@@ -254,7 +258,7 @@ def gold_customer_dim():
     """
     import sys
     sys.path.insert(0, MASTER_DATA_PATH)
-    from config.master_data import get_customers_for_dimension
+    from master_data import get_customers_for_dimension
     
     # Full schema matching original dimension_generator.py
     schema = StructType([
@@ -311,7 +315,7 @@ def gold_date_dim():
     """
     import sys
     sys.path.insert(0, MASTER_DATA_PATH)
-    from config.master_data import SALE_PERIODS, HOLIDAYS, PEAK_SEASON_MONTHS
+    from master_data import SALE_PERIODS, HOLIDAYS, PEAK_SEASON_MONTHS
     
     # Full schema with fiscal columns
     schema = StructType([

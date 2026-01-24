@@ -12,11 +12,13 @@ Uses master_data.py as the single source of truth for reference data.
 No database connectivity required.
 """
 
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from .base_generator import BaseEventGenerator
 
 # Import master data (single source of truth, no DB dependency)
-from config.master_data import (
+# master_data.py is now at 00-data/ alongside generators/
+from master_data import (
     SKUS, ALL_LOCATION_IDS, STORE_IDS, WAREHOUSE_IDS, DC_IDS,
     PRODUCT_CATALOG, get_product_by_sku
 )
@@ -66,6 +68,10 @@ class InventoryEventGenerator(BaseEventGenerator):
         volume_path: str,
         batch_size: int = 100,
         random_seed: Optional[int] = None,
+        # Historical backfill parameters
+        historical_days: Optional[int] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
         # Override master data if needed
         skus: Optional[List[str]] = None,
         location_ids: Optional[List[str]] = None
@@ -75,12 +81,22 @@ class InventoryEventGenerator(BaseEventGenerator):
         
         Args:
             volume_path: Path to inventory volume
-            batch_size: Movements per batch
+            batch_size: Movements per batch (real-time) or per day (backfill)
             random_seed: Optional seed for reproducibility
+            historical_days: Days of historical data to generate (enables backfill mode)
+            start_date: Explicit start date for backfill
+            end_date: End date for backfill (defaults to today)
             skus: Override SKUs (defaults to master_data.SKUS)
             location_ids: Override location IDs (defaults to master_data.ALL_LOCATION_IDS)
         """
-        super().__init__(volume_path, batch_size, random_seed)
+        super().__init__(
+            volume_path, 
+            batch_size, 
+            random_seed,
+            historical_days=historical_days,
+            start_date=start_date,
+            end_date=end_date
+        )
         
         # Use master data or overrides
         self.skus = skus or SKUS
@@ -178,23 +194,35 @@ class InventoryEventGenerator(BaseEventGenerator):
 
 
 def create_inventory_generator(
-    catalog: str = "juan_dev",
-    schema: str = "retail",
+    catalog: Optional[str] = None,
+    schema: Optional[str] = None,
     **kwargs
 ) -> InventoryEventGenerator:
     """
-    Create an inventory generator using master data.
+    Create an inventory generator using master data and pipeline config.
     
     No Spark or database connection required.
     
     Args:
-        catalog: Unity Catalog name (for volume path)
-        schema: Schema name (for volume path)
+        catalog: Unity Catalog name (defaults to config)
+        schema: Schema name (defaults to config)
         **kwargs: Additional arguments for InventoryEventGenerator
         
     Returns:
         Configured InventoryEventGenerator instance
     """
-    volume_path = f"/Volumes/{catalog}/{schema}/data/inventory"
+    from config import get_catalog, get_schema, get_volume_path, get_generator_config
+    
+    # Use config values if not explicitly provided
+    catalog = catalog or get_catalog()
+    schema = schema or get_schema()
+    
+    # Get volume path from config
+    volume_path = get_volume_path('inventory')
+    
+    # Get generator-specific config (batch_size, etc.)
+    gen_config = get_generator_config('inventory')
+    if 'batch_size' not in kwargs and 'batch_size' in gen_config:
+        kwargs['batch_size'] = gen_config['batch_size']
     
     return InventoryEventGenerator(volume_path, **kwargs)
