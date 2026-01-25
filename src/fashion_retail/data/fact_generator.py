@@ -605,9 +605,11 @@ class FactGenerator:
                     suspected_reason = self._rng.choice(['high_shipping', 'price_concern', 'comparison_shopping',
                                                       'technical_issue', 'payment_issue'])
 
+                # Generate cart_id first, then derive abandonment_id from it for consistency
+                cart_id = f"CART_{date_info['date_key']}_{i}"
                 abandonment_record = {
-                    'abandonment_id': i + 1,
-                    'cart_id': f"CART_{date_info['date_key']}_{i}",
+                    'abandonment_id': abs(hash(cart_id)) % (2**31),  # Deterministic, globally unique
+                    'cart_id': cart_id,
                     'customer_key': customer['customer_key'],
                     'date_key': date_info['date_key'],
                     'time_key': self._rng.choice([900, 1200, 1500, 1800, 2000]),

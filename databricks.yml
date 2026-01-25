@@ -11,9 +11,10 @@ resources:
       continuous: false
       channel: CURRENT
       serverless: true
+      # https://databricks.github.io/cli/python/databricks.bundles.pipelines.htmlhttps://databricks.github.io/cli/python/databricks.bundles.pipelines.html
+      # Used as the root directory when editing the pipeline in the Databricks user interface and it is added to sys.path when executing Python sources during pipeline execution.
+      root_path: ${workspace.root_path}/files
       libraries:
-        - notebook:
-            path: ./00-data/master_data.py
         - notebook:
             path: ./03-medallion-pipeline/pipelines/bronze_pipeline.py
         - notebook:

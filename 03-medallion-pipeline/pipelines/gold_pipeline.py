@@ -3,7 +3,7 @@
 # MAGIC # Gold Pipeline - Business-Ready Tables
 # MAGIC 
 # MAGIC This pipeline creates Gold tables from:
-# MAGIC - **Master Data**: Dimension tables derived from config/master_data.py
+# MAGIC - **Master Data**: Dimension tables derived from 00-data/master_data.py
 # MAGIC - **Silver Streaming**: Fact tables from transformed events
 # MAGIC 
 # MAGIC **Architecture:**
@@ -57,12 +57,41 @@ from datetime import datetime, timedelta
 CATALOG = "juan_dev"
 SCHEMA = "retail"
 
-# Path to 00-data where master_data.py and generators live
-# Note: In DLT pipelines, compute the path dynamically or use bundle paths
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Master Data Import
+# MAGIC 
+# MAGIC Uses DLT `root_path` which is automatically added to sys.path during pipeline execution.
+# MAGIC The root_path is configured as `${workspace.root_path}/files` in databricks.yml.
+
+# COMMAND ----------
+
+import sys
 import os
-_notebook_path = spark.conf.get("spark.databricks.notebook.path", "")
-_repo_root = "/".join(_notebook_path.split("/")[:-2])
-MASTER_DATA_PATH = f"/Workspace{_repo_root}/00-data"
+
+# DLT automatically adds root_path to sys.path
+# root_path is ${workspace.root_path}/files, so we need to add the 00-data subdirectory
+# to import master_data.py
+
+for path in sys.path:
+    # Look for the files directory (root_path) in sys.path
+    if path.endswith('/files') or '/files/' in path:
+        data_dir = os.path.join(path, '00-data')
+        if os.path.isdir(data_dir) and data_dir not in sys.path:
+            sys.path.insert(0, data_dir)
+            print(f"Added {data_dir} to sys.path")
+            break
+
+from master_data import (
+    get_products_for_dimension,
+    get_locations_for_dimension,
+    get_channels_for_dimension,
+    get_customers_for_dimension,
+    SALE_PERIODS,
+    HOLIDAYS,
+    PEAK_SEASON_MONTHS,
+)
 
 # COMMAND ----------
 
@@ -94,10 +123,6 @@ def gold_product_dim():
     Creates products with SKUs, pricing, categories, etc.
     Full schema matching original dimension_generator.py for metric view compatibility.
     """
-    import sys
-    sys.path.insert(0, MASTER_DATA_PATH)
-    from master_data import get_products_for_dimension
-    
     # Full schema matching original dimension_generator.py
     schema = StructType([
         StructField("product_key", IntegerType(), False),
@@ -154,10 +179,6 @@ def gold_location_dim():
     Creates stores, warehouses, and distribution centers.
     Full schema matching original dimension_generator.py for metric view compatibility.
     """
-    import sys
-    sys.path.insert(0, MASTER_DATA_PATH)
-    from master_data import get_locations_for_dimension
-    
     # Full schema matching original dimension_generator.py
     schema = StructType([
         StructField("location_key", IntegerType(), False),
@@ -211,10 +232,6 @@ def gold_channel_dim():
     
     Creates sales channels (web, mobile, POS, etc.).
     """
-    import sys
-    sys.path.insert(0, MASTER_DATA_PATH)
-    from master_data import get_channels_for_dimension
-    
     schema = StructType([
         StructField("channel_key", IntegerType(), False),
         StructField("channel_code", StringType(), True),
@@ -256,10 +273,6 @@ def gold_customer_dim():
     Creates customer records with segment assignments.
     Full schema matching original dimension_generator.py for metric view compatibility.
     """
-    import sys
-    sys.path.insert(0, MASTER_DATA_PATH)
-    from master_data import get_customers_for_dimension
-    
     # Full schema matching original dimension_generator.py
     schema = StructType([
         StructField("customer_key", IntegerType(), False),
@@ -313,10 +326,6 @@ def gold_date_dim():
     Date dimension generated for 3 years of history + 1 year future.
     Full schema matching original dimension_generator.py for metric view compatibility.
     """
-    import sys
-    sys.path.insert(0, MASTER_DATA_PATH)
-    from master_data import SALE_PERIODS, HOLIDAYS, PEAK_SEASON_MONTHS
-    
     # Full schema with fiscal columns
     schema = StructType([
         StructField("date_key", IntegerType(), False),
@@ -696,7 +705,10 @@ def gold_cart_abandonment_fact():
     )
     
     # Create abandonment records
+    # abandonment_id: Use hash of session_id for deterministic, globally unique ID
+    # This ensures same cart event always gets same ID (streaming idempotency)
     return session_agg.select(
+        F.abs(F.hash(col("session_id"))).cast("int").alias("abandonment_id"),
         F.concat(lit("CART_"), col("session_id")).alias("cart_id"),
         coalesce(col("customer_key"), lit(-1)).cast("int").alias("customer_key"),
         col("date_key").cast("int"),

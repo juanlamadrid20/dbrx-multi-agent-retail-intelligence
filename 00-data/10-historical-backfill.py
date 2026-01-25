@@ -28,9 +28,15 @@ import sys
 import os
 
 # Add 00-data directory to path for generators and master_data
+# Use dbutils to get the notebook's directory path
 notebook_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
 data_dir = "/Workspace" + "/".join(notebook_path.split("/")[:-1])
-sys.path.insert(0, data_dir)
+
+# Add to Python path for importing master_data and generators
+if data_dir not in sys.path:
+    sys.path.insert(0, data_dir)
+
+print(f"Data directory: {data_dir}")
 
 from datetime import datetime, timedelta
 
