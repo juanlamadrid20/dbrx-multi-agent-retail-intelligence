@@ -4,7 +4,7 @@ bundle:
 resources:
   jobs:
     fashion_retail_data_generation:
-      name: "Fashion Retail Data Generation"
+      name: "retail-intelligence-data-generation"
       tasks:
         - task_key: generate_data
           notebook_task:
@@ -15,14 +15,62 @@ resources:
         on_failure:
           - ${workspace.current_user.userName}
     
+    fashion_retail_reviews:
+      name: "retail-intelligence-reviews-generation"
+      tasks:
+        - task_key: generate_reviews
+          notebook_task:
+            notebook_path: ./01-vector-store/01-create-reviews.ipynb
+            source: WORKSPACE
+          timeout_seconds: 1800
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+
+    fashion_retail_reviews_analysis:
+      name: "retail-intelligence-reviews-analysis"
+      tasks:
+        - task_key: analyze_reviews
+          notebook_task:
+            notebook_path: ./01-vector-store/02-reviews-analysis.ipynb
+            source: WORKSPACE
+          timeout_seconds: 1800
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+
     fashion_retail_cleanup:
-      name: "Fashion Retail Table Cleanup"
+      name: "retail-intelligence-cleanup"
       tasks:
         - task_key: cleanup_tables
           notebook_task:
-            notebook_path: ./00-data/10-cleanup-notebook.py 
+            notebook_path: ./00-data/10-cleanup-notebook.py
             source: WORKSPACE
           timeout_seconds: 1800  # 30 minutes should be enough for cleanup
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+
+    customer_behavior_metric_views:
+      name: "retail-intelligence-customer-behavior-metrics"
+      tasks:
+        - task_key: create_customer_behavior_metrics
+          notebook_task:
+            notebook_path: ./02-semantic-layer/customer_behavior_metric_views.ipynb
+            source: WORKSPACE
+          timeout_seconds: 1800
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+
+    inventory_metric_views:
+      name: "retail-intelligence-inventory-metrics"
+      tasks:
+        - task_key: create_inventory_metrics
+          notebook_task:
+            notebook_path: ./02-semantic-layer/inventory_metric_views.ipynb
+            source: WORKSPACE
+          timeout_seconds: 1800
       email_notifications:
         on_failure:
           - ${workspace.current_user.userName}
