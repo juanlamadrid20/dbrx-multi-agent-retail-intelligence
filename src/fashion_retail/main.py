@@ -44,11 +44,14 @@ class FashionRetailDataGenerator:
             self.schema = config.schema
         
     def setup_catalog(self):
-        """Create catalog and schema if they don't exist"""
+        """Set up catalog and create schema if it doesn't exist.
+        
+        Note: Assumes the catalog already exists. Create it via Databricks UI
+        or with appropriate MANAGED LOCATION if needed.
+        """
         logger.info(f"Setting up catalog: {self.catalog}.{self.schema}")
         
-        # Create catalog if not exists
-        self.spark.sql(f"CREATE CATALOG IF NOT EXISTS {self.catalog}")
+        # Use existing catalog (catalog must be pre-created)
         self.spark.sql(f"USE CATALOG {self.catalog}")
         
         # Create schema with comment

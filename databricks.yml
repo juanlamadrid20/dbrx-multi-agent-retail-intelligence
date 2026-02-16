@@ -81,3 +81,10 @@ targets:
     workspace:
       host: https://e2-demo-field-eng.cloud.databricks.com 
       root_path: /Workspace/Users/${workspace.current_user.userName}/ml/agent-bricks/multi-agent-retail-intelligence
+  
+  fevm:
+    mode: development
+    default: true
+    workspace:
+      host: https://fevm-juan-use1.cloud.databricks.com
+      root_path: /Workspace/Users/${workspace.current_user.userName}/ml/agent-bricks/multi-agent-retail-intelligence

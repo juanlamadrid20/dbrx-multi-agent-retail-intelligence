@@ -17,7 +17,7 @@
 # -----------------------------------------------------------------------------
 # Unity Catalog location for generated tables
 
-catalog: juan_dev          # Unity Catalog name
+catalog: juan_use1_catalog          # Unity Catalog name
 schema: retail             # Schema within the catalog
 force_recreate: true       # If true, drop and recreate all tables on each run
 
