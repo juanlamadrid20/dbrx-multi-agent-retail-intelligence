@@ -1,6 +1,6 @@
 {
   "table_name": "gold_cart_abandonment_fact",
-  "catalog": "juan_dev",
+  "catalog": "juan_use1_catalog",
   "schema": "retail",
   "description": "Cart abandonment tracking with inventory correlation",
   "table_type": "FACT",

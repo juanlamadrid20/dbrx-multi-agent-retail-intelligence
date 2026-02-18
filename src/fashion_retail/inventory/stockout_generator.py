@@ -95,7 +95,7 @@ class StockoutGenerator:
         """
         self.spark = spark
         self.config = config
-        self.catalog = config.get('catalog', 'juan_dev')
+        self.catalog = config.get('catalog', 'juan_use1_catalog')
         self.schema = config.get('schema', 'retail')
         self.peak_season_months = config.get('peak_season_months', [11, 12])  # Nov, Dec
 

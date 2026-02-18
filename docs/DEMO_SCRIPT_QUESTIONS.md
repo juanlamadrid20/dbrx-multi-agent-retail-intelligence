@@ -226,7 +226,7 @@ Give me a strategic summary: What are the top 3 actions we should take this quar
 ## Technical Details
 
 ### Data Schema
-- **Catalog/Schema**: `juan_dev.retail`
+- **Catalog/Schema**: `juan_use1_catalog.retail`
 - **Tables**: 12 dimension tables + 7 fact tables (including customer reviews)
 - **Metric Views**: 20 pre-aggregated metric views for optimized queries
 - **Vector Search**: Enabled on `gold_customer_reviews` for semantic search
@@ -237,7 +237,7 @@ Give me a strategic summary: What are the top 3 actions we should take this quar
 - **Customer Reviews Agent**: Vector Search RAG over `gold_customer_reviews` (~5,000 reviews) with semantic search on review content
 
 ### Customer Reviews Data
-- **Table**: `juan_dev.retail.gold_customer_reviews`
+- **Table**: `juan_use1_catalog.retail.gold_customer_reviews`
 - **Volume**: ~5,000 reviews
 - **Types**: Product reviews (60%), Purchase experiences (20%), Return feedback (20%)
 - **Linked to**: `gold_customer_dim` (customer_key), `gold_product_dim` (product_key)

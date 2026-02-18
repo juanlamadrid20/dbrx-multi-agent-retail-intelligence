@@ -24,8 +24,8 @@ Once deployed, this Knowledge Assistant can be added to a Multi-Agent Supervisor
 
 Before creating the Knowledge Assistant, ensure:
 
-1. **Vector Search Index exists**: `juan_dev.retail.gold_customer_reviews_idx`
-2. **Source table exists**: `juan_dev.retail.gold_customer_reviews`
+1. **Vector Search Index exists**: `juan_use1_catalog.retail.gold_customer_reviews_idx`
+2. **Source table exists**: `juan_use1_catalog.retail.gold_customer_reviews`
 3. **Index is synced** and ready for queries
 
 ---
@@ -53,7 +53,7 @@ using semantic search over 5,000+ customer reviews.
 | Field | Value |
 |-------|-------|
 | **Type** | Vector Search Index |
-| **Source** | `juan_dev.retail.gold_customer_reviews_idx` |
+| **Source** | `juan_use1_catalog.retail.gold_customer_reviews_idx` |
 | **Name** | `gold_customer_reviews_idx` |
 | **Doc URI Column** | `review_id` |
 | **Text Column** | `review_text` |
@@ -98,8 +98,8 @@ Always be helpful and provide actionable insights from customer feedback.
 
 | Property | Value |
 |----------|-------|
-| Source Table | `juan_dev.retail.gold_customer_reviews` |
-| Vector Search Index | `juan_dev.retail.gold_customer_reviews_idx` |
+| Source Table | `juan_use1_catalog.retail.gold_customer_reviews` |
+| Vector Search Index | `juan_use1_catalog.retail.gold_customer_reviews_idx` |
 | Total Reviews | ~5,000 |
 | Embedding Column | `review_text` |
 
@@ -124,7 +124,7 @@ Use these queries to test the vector search index directly in Databricks:
 ```sql
 -- Sizing issues
 SELECT * FROM VECTOR_SEARCH(
-  index => 'juan_dev.retail.gold_customer_reviews_idx',
+  index => 'juan_use1_catalog.retail.gold_customer_reviews_idx',
   query => 'sizing runs small need to order larger',
   num_results => 10
 )
@@ -134,16 +134,16 @@ SELECT
   vs.*, 
   pd.*
 FROM VECTOR_SEARCH(
-  index => 'juan_dev.retail.gold_customer_reviews_idx',
+  index => 'juan_use1_catalog.retail.gold_customer_reviews_idx',
   query => 'fabric quality feels cheap scratchy uncomfortable',
   num_results => 10
 ) AS vs
-LEFT JOIN juan_dev.retail.gold_product_dim AS pd
+LEFT JOIN juan_use1_catalog.retail.gold_product_dim AS pd
   ON vs.product_brand = pd.brand
 
 -- Positive footwear reviews
 SELECT * FROM VECTOR_SEARCH(
-  index => 'juan_dev.retail.gold_customer_reviews_idx',
+  index => 'juan_use1_catalog.retail.gold_customer_reviews_idx',
   query => 'comfortable shoes great arch support all day wear',
   num_results => 10
 )
@@ -154,14 +154,14 @@ SELECT * FROM VECTOR_SEARCH(
 ```sql
 -- Shipping complaints
 SELECT * FROM VECTOR_SEARCH(
-  index => 'juan_dev.retail.gold_customer_reviews_idx',
+  index => 'juan_use1_catalog.retail.gold_customer_reviews_idx',
   query => 'shipping took too long delayed package',
   num_results => 10
 )
 
 -- Positive delivery experiences
 SELECT * FROM VECTOR_SEARCH(
-  index => 'juan_dev.retail.gold_customer_reviews_idx',
+  index => 'juan_use1_catalog.retail.gold_customer_reviews_idx',
   query => 'fast shipping beautiful packaging arrived early',
   num_results => 10
 )
@@ -172,14 +172,14 @@ SELECT * FROM VECTOR_SEARCH(
 ```sql
 -- Return process feedback
 SELECT * FROM VECTOR_SEARCH(
-  index => 'juan_dev.retail.gold_customer_reviews_idx',
+  index => 'juan_use1_catalog.retail.gold_customer_reviews_idx',
   query => 'return process refund exchange difficult',
   num_results => 10
 )
 
 -- Sizing-related returns
 SELECT * FROM VECTOR_SEARCH(
-  index => 'juan_dev.retail.gold_customer_reviews_idx',
+  index => 'juan_use1_catalog.retail.gold_customer_reviews_idx',
   query => 'had to return wrong size didnt fit',
   num_results => 10
 )

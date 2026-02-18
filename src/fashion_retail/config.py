@@ -159,7 +159,7 @@ class FashionRetailConfig:
     """
 
     # Environment configuration
-    catalog: str = "juan_dev"
+    catalog: str = "juan_use1_catalog"
     schema: str = "retail"
     force_recreate: bool = True
 

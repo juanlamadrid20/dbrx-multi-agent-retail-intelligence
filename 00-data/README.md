@@ -715,8 +715,8 @@ SELECT
     COUNT(*) as total_positions,
     SUM(CASE WHEN is_stockout = TRUE THEN 1 ELSE 0 END) as stockout_positions,
     ROUND(SUM(CASE WHEN is_stockout = TRUE THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) as stockout_rate_pct
-FROM juan_dev.retail.gold_inventory_fact
-WHERE date_key = (SELECT MAX(date_key) FROM juan_dev.retail.gold_inventory_fact)
+FROM juan_use1_catalog.retail.gold_inventory_fact
+WHERE date_key = (SELECT MAX(date_key) FROM juan_use1_catalog.retail.gold_inventory_fact)
 """
 
 result = spark.sql(validation_query)

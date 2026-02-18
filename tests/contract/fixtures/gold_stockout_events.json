@@ -1,6 +1,6 @@
 {
   "table_name": "gold_stockout_events",
-  "catalog": "juan_dev",
+  "catalog": "juan_use1_catalog",
   "schema": "retail",
   "description": "Stockout event tracking fact table (NEW)",
   "table_type": "FACT",

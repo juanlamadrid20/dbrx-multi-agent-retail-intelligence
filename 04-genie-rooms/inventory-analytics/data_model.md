@@ -2,14 +2,19 @@
 
 **Feature**: 004-databricks-inventory-analytics
 **Date**: 2025-01-27
-**Purpose**: Reference documentation for inventory analytics data model - Genie relies on automatic schema discovery from table comments/descriptions
+**Purpose**: Reference documentation for inventory analytics semantic assets
+
+## Scope by Setup Mode
+
+- **Mode A (tables-based)**: this document is primary reference.
+- **Mode B (metric-views-only)**: use this document as background only; room behavior should follow metric views in `README.genie.inventory.md`.
 
 ## Overview
 
-This document provides reference information about the inventory analytics data model. **Important**: The Genie space relies on automatic schema discovery from tables added to the space. Tables must have proper comments and descriptions for Genie to understand the data model, relationships, and key metrics effectively.
+This document provides reference information about the inventory analytics data model. For Mode A rooms, Genie relies on automatic schema discovery from tables added to the room. Tables should have clear table and column comments to improve understanding of relationships and metrics.
 
 **Data Model Type**: Star Schema (dimension and fact tables)
-**Primary Catalog/Schema**: `juan_dev.retail` (Unity Catalog managed tables)
+**Primary Catalog/Schema**: `juan_use1_catalog.retail` (Unity Catalog managed tables)
 **Data Volume**: Medium-scale (1-10 million rows per table, occasional multi-table joins)
 **Temporal Coverage**: Historical data (forecasting out of scope)
 

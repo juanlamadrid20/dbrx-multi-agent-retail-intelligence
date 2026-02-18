@@ -176,7 +176,7 @@ Give me a strategic summary: What are the top 3 actions we should take this quar
 ## Technical Details
 
 ### Data Schema
-- **Catalog/Schema**: `juan_dev.retail`
+- **Catalog/Schema**: `juan_use1_catalog.retail`
 - **Tables**: 12 dimension tables + 6 fact tables
 - **Metric Views**: 20 pre-aggregated metric views for optimized queries
 

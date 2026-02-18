@@ -72,7 +72,7 @@ See notebook for migration details.
 - `langgraph`
 - `langchain-core`
 
-**Unity Catalog Model**: `juan_dev.genai.retail_multi_genie_agent`
+**Unity Catalog Model**: `juan_use1_catalog.genai.retail_multi_genie_agent`
 
 ---
 
@@ -88,7 +88,7 @@ See notebook for migration details.
 
 **Endpoint Configuration**:
 - **Name**: `retail-multi-genie-agent`
-- **Model**: `juan_dev.genai.retail_multi_genie_agent@challenger`
+- **Model**: `juan_use1_catalog.genai.retail_multi_genie_agent@challenger`
 - **Workload**: CPU Small (0-4 concurrent requests)
 - **Scale to Zero**: Enabled (cost optimization)
 - **Authentication**: Automatic Genie Space passthrough
@@ -164,7 +164,7 @@ Agent configuration is in:
 
 ### Model Serving Endpoint
 - **Endpoint Name**: `retail-multi-genie-agent`
-- **UC Model**: `juan_dev.genai.retail_multi_genie_agent`
+- **UC Model**: `juan_use1_catalog.genai.retail_multi_genie_agent`
 - **Workload**: CPU Small (scalable to Medium/Large)
 - **Cost**: Scale-to-zero enabled (only pay when in use)
 

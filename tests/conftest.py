@@ -20,9 +20,9 @@ def databricks_config():
         Dict with catalog, schema, and MCP tool references
     """
     return {
-        'catalog': 'juan_dev',
+        'catalog': 'juan_use1_catalog',
         'schema': 'retail',
-        'full_schema': 'juan_dev.retail',
+        'full_schema': 'juan_use1_catalog.retail',
     }
 
 
@@ -69,7 +69,7 @@ def table_exists():
     Usage:
         exists = table_exists("gold_inventory_fact")
     """
-    def check_table(table_name, catalog='juan_dev', schema='retail'):
+    def check_table(table_name, catalog='juan_use1_catalog', schema='retail'):
         sql = f"SHOW TABLES IN {catalog}.{schema} LIKE '{table_name}'"
         # Return SQL query for MCP tool execution
         return sql
@@ -86,7 +86,7 @@ def get_table_schema():
         schema_sql = get_table_schema("gold_inventory_fact")
         # Execute via MCP: mcp__dbrx-admin-mcp__run_sql_query(sql=schema_sql)
     """
-    def get_schema(table_name, catalog='juan_dev', schema='retail'):
+    def get_schema(table_name, catalog='juan_use1_catalog', schema='retail'):
         sql = f"DESCRIBE {catalog}.{schema}.{table_name}"
         return sql
 

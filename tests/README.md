@@ -50,7 +50,7 @@ Tests can query actual Databricks tables via MCP `run_sql_query` tool for valida
 
 ## Test Requirements
 
-- **Contract Tests**: Require Delta tables to exist in Unity Catalog (`juan_dev.retail`)
+- **Contract Tests**: Require Delta tables to exist in Unity Catalog (`juan_use1_catalog.retail`)
 - **Integration Tests**: Require full data generation pipeline to have run
 - **Unit Tests**: Standalone, no external dependencies
 
@@ -64,7 +64,7 @@ This test suite can leverage the Databricks MCP server for:
 Example:
 ```python
 # In contract tests, can use MCP tool:
-# mcp__dbrx-admin-mcp__run_sql_query(sql="DESCRIBE juan_dev.retail.gold_inventory_fact")
+# mcp__dbrx-admin-mcp__run_sql_query(sql="DESCRIBE juan_use1_catalog.retail.gold_inventory_fact")
 ```
 
 ## TDD Workflow

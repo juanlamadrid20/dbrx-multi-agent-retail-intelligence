@@ -1,12 +1,17 @@
 # Data Model: Customer Behavior Data for Genie
 
-**Feature**: 003-cutomer-behavior-genie
+**Feature**: 003-customer-behavior-genie
 **Date**: 2025-11-04
-**Purpose**: Documentation for Genie space configuration - describes customer behavior tables, relationships, and metrics that Genie needs to understand
+**Purpose**: Reference documentation for customer behavior semantic assets
+
+## Scope by Setup Mode
+
+- **Mode A (tables-based)**: this document is primary reference.
+- **Mode B (metric-views-only)**: use this document as background only; room behavior should follow metric views in `README.genie.customer-behavior.md`.
 
 ## Overview
 
-This document describes the customer behavior data model accessible to the Customer Behavior Genie space. The Genie space queries these tables to answer questions about customer purchasing patterns, segmentation, cart abandonment, product affinity, channel behavior, and engagement metrics.
+This document describes the customer behavior data model accessible to the Customer Behavior Genie space. For Mode A rooms, Genie queries these tables to answer questions about customer purchasing patterns, segmentation, cart abandonment, product affinity, channel behavior, and engagement metrics.
 
 **Data Model Type**: Star Schema (dimension and fact tables)
 **Primary Catalog/Schema**: Unity Catalog managed tables (specific catalog/schema depends on deployment)
@@ -427,5 +432,5 @@ WHERE date_key >= [start_date] AND date_key <= [end_date]
 ## References
 
 - **Full Schema Documentation**: `00-data/README.md`
-- **Genie Space Configuration**: `10-genie-rooms/customer-behavior/`
+- **Genie Space Configuration**: `04-genie-rooms/customer-behavior/`
 

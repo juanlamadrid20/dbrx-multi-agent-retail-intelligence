@@ -14,7 +14,7 @@
 # Environment Configuration
 # -----------------------------------------------------------------------------
 
-catalog: juan_dev
+catalog: juan_use1_catalog
 schema: retail
 force_recreate: true
 

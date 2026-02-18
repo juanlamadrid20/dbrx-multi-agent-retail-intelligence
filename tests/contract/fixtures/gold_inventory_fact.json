@@ -1,6 +1,6 @@
 {
   "table_name": "gold_inventory_fact",
-  "catalog": "juan_dev",
+  "catalog": "juan_use1_catalog",
   "schema": "retail",
   "description": "Daily inventory snapshot fact table with stockout tracking",
   "table_type": "FACT",

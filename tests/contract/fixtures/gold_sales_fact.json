@@ -1,6 +1,6 @@
 {
   "table_name": "gold_sales_fact",
-  "catalog": "juan_dev",
+  "catalog": "juan_use1_catalog",
   "schema": "retail",
   "description": "Sales transaction fact table with inventory validation",
   "table_type": "FACT",

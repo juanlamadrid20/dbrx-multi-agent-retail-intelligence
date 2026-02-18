@@ -78,7 +78,7 @@ class DomainConfig:
 # Get catalog from config file or environment
 _TOOLS_CATALOG = _get_config_value(
     'tools_catalog',
-    _BASE_CONFIG.catalog if _BASE_CONFIG else 'juan_dev'
+    _BASE_CONFIG.catalog if _BASE_CONFIG else 'juan_use1_catalog'
 )
 
 # Domain definitions (FR-002: Identify relevant domains)
@@ -214,7 +214,7 @@ def get_all_uc_function_names() -> List[str]:
     Example:
         >>> functions = get_all_uc_function_names()
         >>> print(functions)
-        ['juan_dev.genai.query_customer_behavior_genie', 'juan_dev.genai.query_inventory_genie']
+        ['juan_use1_catalog.genai.query_customer_behavior_genie', 'juan_use1_catalog.genai.query_inventory_genie']
     """
     return [domain.uc_function_name for domain in DOMAINS.values()]
 
